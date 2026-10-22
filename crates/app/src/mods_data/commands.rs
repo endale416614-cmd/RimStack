@@ -470,6 +470,21 @@ impl qobject::ModsData {
         ));
     }
 
+    pub(super) fn clear_active(mut self: Pin<&mut Self>) {
+        let app = self.app();
+        let ids = self.order.unofficial(&app);
+        if ids.is_empty() || self.order.previewing() {
+            return;
+        }
+        self.as_mut().order_mut().take_all(&app, Side::Active, &ids);
+        self.as_mut().changed();
+        self.done_said(say_n!(
+            ids.len(),
+            "Deactivated {} mod",
+            "Deactivated {} mods"
+        ));
+    }
+
     pub(super) fn bin(mut self: Pin<&mut Self>, mod_id: i32) {
         let Some(id) = id(mod_id) else {
             return;

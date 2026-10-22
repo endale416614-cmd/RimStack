@@ -6,6 +6,7 @@ use rimstack_core::mods::library::{Library, ModId};
 pub use rimstack_core::mods::list::Side;
 use rimstack_core::mods::list::{Category, GroupedList, Mod, SortKey, flag};
 use rimstack_core::mods::{demo, sort_reasons};
+use rimstack_core::rimworld::paths::Source;
 use rimstack_core::say;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -404,6 +405,18 @@ impl LoadOrder {
         (0..known.members.len())
             .filter(|&at| !known.overlaps.with(at).is_empty())
             .map(|at| known.members[at])
+            .collect()
+    }
+
+    /// The active mods that are not the game's own.
+    pub fn unofficial(&self, app: &App) -> Vec<ModId> {
+        let loaded = app.library();
+        let Ok((library, _)) = &*loaded else {
+            return Vec::new();
+        };
+        let mods = self.active.mods().iter();
+        mods.filter_map(|m| m.installed)
+            .filter(|&i| library.get(i).is_some_and(|m| m.source != Source::Official))
             .collect()
     }
 

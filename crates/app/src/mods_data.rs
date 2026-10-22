@@ -172,6 +172,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "activateFresh"]
         fn activate_fresh(self: Pin<&mut ModsData>);
+        /// Leaves the game and its DLCs active.
+        #[qinvokable]
+        #[cxx_name = "clearActive"]
+        fn clear_active(self: Pin<&mut ModsData>);
         #[qinvokable]
         fn bin(self: Pin<&mut ModsData>, mod_id: i32);
         #[qinvokable]

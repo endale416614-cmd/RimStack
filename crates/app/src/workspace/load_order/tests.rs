@@ -72,6 +72,20 @@ fn a_mod_taken_across_is_one_step_that_undo_takes_back() {
 }
 
 #[test]
+fn clearing_leaves_only_the_game_active_in_one_step() {
+    let (_tmp, app) = installed();
+    let mut order = LoadOrder::read(&app, true, false);
+    let id = roads(&order, Side::Inactive);
+    order.take_all(&app, Side::Inactive, &[id]);
+    let ids = order.unofficial(&app);
+    assert_eq!(ids, [id]);
+    order.take_all(&app, Side::Active, &ids);
+    assert_eq!(app.session().current(), ["ludeon.rimworld"]);
+    assert!(order.undo(&app));
+    assert_eq!(app.session().current(), ["ludeon.rimworld", "ann.roads"]);
+}
+
+#[test]
 fn an_error_ignored_is_gone_until_warned_again() {
     let (tmp, app) = installed();
     let about = "<ModMetaData><packageId>Ann.Roads</packageId><name>Ann.Roads</name><modDependencies><li><packageId>gone.lib</packageId></li></modDependencies></ModMetaData>";
