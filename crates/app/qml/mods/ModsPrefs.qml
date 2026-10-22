@@ -17,4 +17,6 @@ Settings {
     // numbered list), -1 when the order is close to category order.
     property int headings: -1
     property string columnSizes: ""
+    // The inactive list's part of the room the two lists share, beside the details.
+    property real inactiveShare: 0.5
 }

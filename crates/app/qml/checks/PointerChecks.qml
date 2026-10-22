@@ -19,20 +19,21 @@ Item {
     }
 
     function divider() {
-        const wide = details.width, edge = details.mapToItem(screen, 0, 200)
-        events.mouseMove(screen, edge.x - 1, edge.y, -1, Qt.NoButton, Qt.NoModifier)
+        const wide = details.width, edge = details.mapToItem(screen, details.width, 200)
+        events.mouseMove(screen, edge.x + 1, edge.y, -1, Qt.NoButton, Qt.NoModifier)
         check("the pointer over the divider moves nothing", details.width === wide)
-        events.mousePress(screen, edge.x - 1, edge.y, Qt.LeftButton, Qt.NoModifier, -1)
+        events.mousePress(screen, edge.x + 1, edge.y, Qt.LeftButton, Qt.NoModifier, -1)
         for (let i = 1; i <= 6; i++)
-            events.mouseMove(screen, edge.x - 1 - 10 * i, edge.y, 10, Qt.LeftButton, Qt.NoModifier)
-        events.mouseRelease(screen, edge.x - 61, edge.y, Qt.LeftButton, Qt.NoModifier, 10)
+            events.mouseMove(screen, edge.x + 1 + 10 * i, edge.y, 10, Qt.LeftButton, Qt.NoModifier)
+        events.mouseRelease(screen, edge.x + 61, edge.y, Qt.LeftButton, Qt.NoModifier, 10)
         check("dragging the divider sixty pixels widens the details by as much", Math.abs(details.width - wide - 60) <= 2)
         Mods.prefs.details = wide
     }
 
     function dueHint(item) {
         for (const child of item.data) {
-            if (child.due === true && child.step > 0)
+            // Shown only: a hint whose button is folded away (a narrow load order) is skipped.
+            if (child.due === true && child.step > 0 && child.visible)
                 return child
             const found = child.data ? checks.dueHint(child) : null
             if (found)

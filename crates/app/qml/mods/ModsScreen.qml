@@ -56,24 +56,31 @@ Item {
         anchors.leftMargin: rail.width
         anchors.bottomMargin: bulk.height
         orientation: Qt.Horizontal
+        // What the two lists share, side by side as in RimSort: the details take the rest.
+        readonly property real listsRoom: width - (detailsPane.visible ? detailsPane.width + 7 : 0) - 7
+        readonly property real inactiveWide: Math.max(inactivePane.SplitView.minimumWidth, Math.min(Math.round(listsRoom * Mods.prefs.inactiveShare), listsRoom - activePane.SplitView.minimumWidth))
+        // The drag sets the width itself; the share is bound again after, to follow the window.
+        onResizingChanged: if (!resizing) inactivePane.SplitView.preferredWidth = Qt.binding(() => panes.inactiveWide)
         handle: Rectangle {
             id: grip
-            readonly property bool first: x < activePane.x
+            // The divider right of the details; the other is between the two lists.
+            readonly property bool first: !inactivePane.visible || x < inactivePane.x
             function move(by) {
-                const pane = first ? inactivePane : detailsPane
-                const wide = Math.max(pane.SplitView.minimumWidth, pane.width + (first ? by : -by))
-                pane.SplitView.preferredWidth = wide
-                if (first)
-                    Mods.prefs.inactive = wide
-                else
+                const pane = first ? detailsPane : inactivePane
+                const wide = Math.max(pane.SplitView.minimumWidth, pane.width + by)
+                if (first) {
+                    pane.SplitView.preferredWidth = wide
                     Mods.prefs.details = wide
+                } else {
+                    Mods.prefs.inactiveShare = wide / panes.listsRoom
+                }
             }
             readonly property bool held: SplitHandle.pressed || SplitHandle.hovered || activeFocus
             implicitWidth: 7
             color: "transparent"
             activeFocusOnTab: true
             Accessible.role: Accessible.Separator
-            Accessible.name: first ? Theme.say("Width of the inactive mods") : Theme.say("Width of the details")
+            Accessible.name: first ? Theme.say("Width of the details") : Theme.say("Width of the inactive mods")
             Keys.onLeftPressed: move(-24)
             Keys.onRightPressed: move(24)
             // Not further left: a list's scroll bar sits there.
@@ -86,15 +93,22 @@ Item {
             }
             // Takes no button, so the drag still reaches the divider.
             MouseArea { x: -Theme.gapHair; width: grip.width + Theme.gapHair + Theme.gapSmall; height: parent.height; acceptedButtons: Qt.NoButton; cursorShape: Qt.SizeHorCursor }
-            TapHandler { onDoubleTapped: grip.move(grip.first ? 290 - inactivePane.width : detailsPane.width - 360) }
+            TapHandler { onDoubleTapped: grip.move(grip.first ? 360 - detailsPane.width : panes.listsRoom / 2 - inactivePane.width) }
         }
 
+        DetailsPane {
+            id: detailsPane
+            SplitView.preferredWidth: Mods.prefs.details
+            SplitView.minimumWidth: 260
+            onWidthChanged: if (panes.resizing) Mods.prefs.details = width
+            visible: Hub.mods.problem === ""
+        }
         InactivePane {
             id: inactivePane
             enabled: Mods.comparing === null
-            SplitView.preferredWidth: Mods.prefs.inactive
+            SplitView.preferredWidth: panes.inactiveWide
             SplitView.minimumWidth: 200
-            onWidthChanged: if (panes.resizing) Mods.prefs.inactive = width
+            onWidthChanged: if (panes.resizing && panes.listsRoom > 0) Mods.prefs.inactiveShare = width / panes.listsRoom
             visible: Hub.mods.problem === "" && !Mods.prefs.inactiveHidden
         }
         ActivePane {
@@ -102,13 +116,6 @@ Item {
             enabled: Mods.comparing === null
             SplitView.fillWidth: true
             SplitView.minimumWidth: 380
-        }
-        DetailsPane {
-            id: detailsPane
-            SplitView.preferredWidth: Mods.prefs.details
-            SplitView.minimumWidth: 260
-            onWidthChanged: if (panes.resizing) Mods.prefs.details = width
-            visible: Hub.mods.problem === ""
         }
     }
 
@@ -142,7 +149,8 @@ Item {
     Loader {
     id: compareLoader
     onItemChanged: Mods.compareView = item
-    width: parent.width - Mods.prefs.details - 1
+    x: detailsPane.width + 1
+    width: parent.width - x
     height: parent.height - bulk.height
     active: Mods.comparing !== null
     sourceComponent: CompareView {
