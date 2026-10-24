@@ -230,6 +230,23 @@ Item {
             label: Theme.say("Unsubscribe"), danger: true, run: () => Hub.downloads.unsubscribe(modId) })
     }
 
+    // Asked of the selected mods: which Steam can unsubscribe from, which the bin may take.
+    readonly property var upkept: selectedCount > 1 ? Hub.mods.upkeepOf(selectedIds) : ({ unsubscribe: [], bin: [] })
+    function unsubscribeSelected() {
+        const found = upkept
+        Notices.ask({
+            title: Theme.plural(found.unsubscribe.length, "Unsubscribe from {} mod", "Unsubscribe from {} mods"),
+            lines: [Theme.say("Steam, which must be running, unsubscribes and then deletes the mods' folders:"), found.unsubscribeNames],
+            label: Theme.say("Unsubscribe"), danger: true, run: () => { Hub.downloads.unsubscribeAll(found.unsubscribe); select(-1, false) } })
+    }
+    function binSelected() {
+        const found = upkept
+        Notices.ask({
+            title: Theme.plural(found.bin.length, "Move {} mod to the bin", "Move {} mods to the bin"),
+            lines: [found.binNames, Theme.say("Steam downloads a Workshop mod again while you stay subscribed to it.")],
+            label: Theme.say("Move to the bin"), danger: true, run: () => { Hub.mods.binAll(found.bin); select(-1, false) } })
+    }
+
     function openFolder(modId) {
         Qt.openUrlExternally(Theme.fileUrl(about(modId).path))
     }

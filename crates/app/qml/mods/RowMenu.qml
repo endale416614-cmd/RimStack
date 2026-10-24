@@ -30,7 +30,8 @@ QtObject {
         for (const id of about.resubscribe || [])
             fetch.push({ text: Theme.say("Subscribe again"), icon: "download", run: () => Hub.downloads.subscribe(id) })
         groups.push(fetch)
-        if (workshop) {
+        // With several selected, its actions on one mod would read as acting on them all.
+        if (workshop && !many) {
             const steam = [
                 { title: Theme.say("Steam Workshop") },
                 { text: Theme.say("Page in Steam"), icon: "external-link", run: () => Qt.openUrlExternally(about.steamPage) },
@@ -73,7 +74,13 @@ QtObject {
             last.push({ text: Theme.say("Warn about its game version again"), run: () => Mods.trust(row.modId, false) })
         else if (about.offerTrust)
             last.push({ text: Theme.say("Ignore the game version mismatch"), icon: "check", run: () => Mods.trust(row.modId, true) })
-        if (about.canBin)
+        const leaving = many && !inActive ? Mods.upkept.unsubscribe.length : 0
+        const binnable = many ? Mods.upkept.bin.length : 0
+        if (leaving > 0)
+            last.push({ text: Theme.plural(leaving, "Unsubscribe from {} mod…", "Unsubscribe from {} mods…"), icon: "minus", danger: true, run: Mods.unsubscribeSelected })
+        if (binnable > 0)
+            last.push({ text: Theme.plural(binnable, "Move {} mod to the bin…", "Move {} mods to the bin…"), icon: "trash-2", danger: true, run: Mods.binSelected })
+        if (!many && about.canBin)
             last.push({ text: Theme.say("Move to the bin…"), icon: "trash-2", danger: true, run: () => Mods.binRequested(about.name || "", about.path, row.modId) })
         groups.push(last)
         const entries = []

@@ -267,6 +267,7 @@ fn mods(app: &App, shapes: &mut Shapes) {
     let ids = |found: Vec<ModId>| found.into_iter().map(ModId::to_qml).collect::<Vec<_>>();
     shapes.add("mods.versionWarned", &ids(vec![roads]));
     shapes.add("mods.packageMods", &ids(vec![a, b]));
+    shapes.add("mods.upkeepOf", &order.upkeep(app, &[roads, shop, broken]));
     shapes.add("mods.findMods", &order.found(app, "Ann", 5));
     order.preview_sort(app);
     shapes.add("mods.sortMoves", &order.sort_moves());

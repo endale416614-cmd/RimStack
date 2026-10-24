@@ -5,7 +5,7 @@ use crate::changes::Changes;
 use crate::workspace::fetch::{Done, SteamAsk};
 use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::QString;
+use cxx_qt_lib::{QString, QVariant};
 use rimstack_core::base::sentence::Sentence;
 use rimstack_core::mods::library::ModId;
 use rimstack_core::say;
@@ -104,6 +104,16 @@ impl qobject::DownloadsData {
     pub(super) fn unsubscribe(self: Pin<&mut Self>, mod_id: i32) {
         let workshop = ModId::from_qml(mod_id).and_then(|id| self.app().workshop_id(id));
         self.ask_steam(SteamAsk::Unsubscribe, workshop.into_iter().collect());
+    }
+
+    pub(super) fn unsubscribe_all(self: Pin<&mut Self>, mod_ids: &QVariant) {
+        let app = self.app();
+        let workshop = crate::qml::values::mod_ids(mod_ids)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|id| app.workshop_id(id))
+            .collect();
+        self.ask_steam(SteamAsk::Unsubscribe, workshop);
     }
 
     pub(super) fn download_wanted(self: Pin<&mut Self>) {

@@ -207,7 +207,50 @@ pub struct Overview {
     community_time: Option<i64>,
 }
 
+/// Of several mods, those Steam can unsubscribe from and those the bin may take, each with
+/// their names for the question asked first.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Upkeep {
+    unsubscribe: Vec<i32>,
+    unsubscribe_names: String,
+    bin: Vec<i32>,
+    bin_names: String,
+}
+
 impl LoadOrder {
+    pub fn upkeep(&self, app: &App, ids: &[ModId]) -> Upkeep {
+        let loaded = app.library();
+        let Ok((library, _)) = &*loaded else {
+            return Upkeep::default();
+        };
+        let listed = |ids: &[ModId]| {
+            let names: Vec<&str> = (ids.iter().take(12))
+                .filter_map(|&id| Some(library.get(id)?.display_name()))
+                .collect();
+            let more = if ids.len() > names.len() { ", …" } else { "" };
+            names.join(", ") + more
+        };
+        let qml = |ids: Vec<ModId>| ids.into_iter().map(ModId::to_qml).collect();
+        let unsubscribe: Vec<ModId> = (ids.iter().copied())
+            .filter(|&id| app.workshop_id(id).is_some())
+            .collect();
+        let bin: Vec<ModId> = (ids.iter().copied())
+            .filter(|&id| {
+                library
+                    .get(id)
+                    .is_some_and(|m| m.source != Source::Official)
+                    && self.active.position_of(id).is_none()
+            })
+            .collect();
+        Upkeep {
+            unsubscribe_names: listed(&unsubscribe),
+            bin_names: listed(&bin),
+            unsubscribe: qml(unsubscribe),
+            bin: qml(bin),
+        }
+    }
+
     pub fn not_installed(&self, app: &App, side: Side, index: usize) -> Option<NotInstalled> {
         let m = self.list(side).mods().get(index)?;
         if m.installed.is_some() {

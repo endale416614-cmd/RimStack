@@ -86,6 +86,18 @@ fn clearing_leaves_only_the_game_active_in_one_step() {
 }
 
 #[test]
+fn of_several_mods_only_inactive_ones_not_the_game_s_may_go_to_the_bin() {
+    let (_tmp, app) = installed();
+    let order = LoadOrder::read(&app, true, false);
+    let core = order.list(Side::Active).mods()[0].installed.unwrap();
+    let roads = roads(&order, Side::Inactive);
+    let said = serde_json::to_value(order.upkeep(&app, &[core, roads])).unwrap();
+    assert_eq!(said["bin"], serde_json::json!([roads.to_qml()]));
+    assert_eq!(said["binNames"], "Ann.Roads");
+    assert_eq!(said["unsubscribe"], serde_json::json!([]));
+}
+
+#[test]
 fn an_error_ignored_is_gone_until_warned_again() {
     let (tmp, app) = installed();
     let about = "<ModMetaData><packageId>Ann.Roads</packageId><name>Ann.Roads</name><modDependencies><li><packageId>gone.lib</packageId></li></modDependencies></ModMetaData>";

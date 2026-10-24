@@ -497,6 +497,28 @@ impl qobject::ModsData {
         }
     }
 
+    pub(super) fn bin_all(mut self: Pin<&mut Self>, given: &QVariant) {
+        let Some(ids) = ids(given) else {
+            return self.refuse_list();
+        };
+        let app = self.app();
+        let (binned, refused): (Vec<_>, Vec<_>) = ids
+            .into_iter()
+            .map(|id| app.bin_mod(id))
+            .partition(Result::is_ok);
+        let first = refused.into_iter().next().unwrap_or(Ok(()));
+        self.as_mut()
+            .set_upkeep_problem(crate::words::why_not(&first));
+        if !binned.is_empty() {
+            self.as_mut().rescan();
+            self.done_said(say_n!(
+                binned.len(),
+                "Moved {} mod to the bin",
+                "Moved {} mods to the bin"
+            ));
+        }
+    }
+
     pub(super) fn copy_to_local(mut self: Pin<&mut Self>, mod_id: i32) {
         let Some(id) = id(mod_id) else {
             return;

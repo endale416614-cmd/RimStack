@@ -583,6 +583,13 @@ mods.summary: object
 mods.textures: object
   count: number
   ddsMade: number
+mods.upkeepOf: object
+  bin: list
+    []: number
+  binNames: text
+  unsubscribe: list
+    []: number
+  unsubscribeNames: text
 mods.versionWarned: list
   []: number
 saves.folders: list

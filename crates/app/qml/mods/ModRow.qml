@@ -430,8 +430,14 @@ Item {
                 ])
             else if (row.isHeader)
                 Mods.categoryMenu(row, point.position.x, point.position.y, row.category)
-            else if (row.modIndex >= 0)
+            else if (row.modIndex >= 0) {
+                // Shift or Ctrl extends the selection before its menu opens, as a left click does.
+                if (!row.current && (point.modifiers & Qt.ShiftModifier))
+                    Mods.selectThrough(row.modId, row.ownModel === Mods.active)
+                else if (!row.current && (point.modifiers & Qt.ControlModifier))
+                    Mods.selectAlso(row.modId, row.ownModel === Mods.active)
                 Mods.rowMenu(row, point.position.x, point.position.y)
+            }
         }
     }
 

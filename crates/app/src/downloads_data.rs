@@ -61,6 +61,10 @@ pub mod qobject {
         fn download_wanted(self: Pin<&mut DownloadsData>);
         #[qinvokable]
         fn unsubscribe(self: Pin<&mut DownloadsData>, mod_id: i32);
+        /// One request to Steam for all of them; mods not from the Workshop are left out.
+        #[qinvokable]
+        #[cxx_name = "unsubscribeAll"]
+        fn unsubscribe_all(self: Pin<&mut DownloadsData>, mod_ids: &QVariant);
         /// Steam must be running.
         #[qinvokable]
         fn subscribe(self: Pin<&mut DownloadsData>, workshop_id: &QString);

@@ -27,6 +27,8 @@ Rectangle {
         Rectangle { visible: Mods.selectedActive && Mods.columns.shownBy === ""; implicitWidth: 1; implicitHeight: Theme.sized(16); color: Theme.line }
         Btn { visible: Mods.selectedActive && Mods.columns.shownBy === ""; icon: "arrow-up"; text: Theme.say("To top"); tip: Theme.say("To the top of their category"); onClicked: Mods.selectedToEdge(true) }
         Btn { visible: Mods.selectedActive && Mods.columns.shownBy === ""; icon: "arrow-down"; text: Theme.say("To bottom"); tip: Theme.say("To the bottom of their category"); onClicked: Mods.selectedToEdge(false) }
+        Btn { visible: !Mods.selectedActive && Mods.upkept.unsubscribe.length > 0; icon: "minus"; danger: true; text: Theme.say("Unsubscribe…"); tip: Theme.say("Unsubscribes from every selected Workshop mod; Steam then deletes their folders"); onClicked: Mods.unsubscribeSelected() }
+        Btn { visible: Mods.upkept.bin.length > 0; icon: "trash-2"; danger: true; text: Theme.say("Move to the bin…"); tip: Theme.say("Moves the folders of the selected mods to the bin"); onClicked: Mods.binSelected() }
         Item { implicitWidth: Theme.gapWide }
         Btn { text: Theme.say("Clear selection"); tip: Theme.say("Clear the selection (Esc)"); onClicked: Mods.select(-1, false) }
     }

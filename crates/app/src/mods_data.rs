@@ -178,6 +178,10 @@ pub mod qobject {
         fn clear_active(self: Pin<&mut ModsData>);
         #[qinvokable]
         fn bin(self: Pin<&mut ModsData>, mod_id: i32);
+        /// Each that may go; the folders are read again once, after.
+        #[qinvokable]
+        #[cxx_name = "binAll"]
+        fn bin_all(self: Pin<&mut ModsData>, mod_ids: &QVariant);
         #[qinvokable]
         #[cxx_name = "copyToLocal"]
         fn copy_to_local(self: Pin<&mut ModsData>, mod_id: i32);
@@ -185,6 +189,10 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "versionWarned"]
         fn version_warned(self: &ModsData, ids: &QVariant) -> QVariant;
+        /// `{ unsubscribe, unsubscribeNames, bin, binNames }`.
+        #[qinvokable]
+        #[cxx_name = "upkeepOf"]
+        fn upkeep_of(self: &ModsData, ids: &QVariant) -> QVariant;
         #[qinvokable]
         #[cxx_name = "packageMods"]
         fn package_mods(self: &ModsData, keys: &QVariant) -> QVariant;

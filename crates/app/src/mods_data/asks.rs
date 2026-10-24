@@ -47,6 +47,11 @@ impl qobject::ModsData {
         to_qml(&found)
     }
 
+    pub(super) fn upkeep_of(&self, given: &QVariant) -> QVariant {
+        let given = ids(given).unwrap_or_default();
+        to_qml(&self.order.upkeep(&self.app(), &given))
+    }
+
     pub(super) fn package_mods(&self, given: &QVariant) -> QVariant {
         let Some(keys) = from_qml::<Vec<String>>(given) else {
             return to_qml(&Vec::<i32>::new());
