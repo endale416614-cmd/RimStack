@@ -7,6 +7,7 @@ import RimStack.Ui
 Item {
     id: screen
     Appear { of: screen }
+    readonly property real labelWidth: Theme.sized(190)
 
     signal useList(var ids)
     signal trust(int modId, bool yes)
@@ -51,7 +52,7 @@ Item {
         property bool changed: false
         signal reset()
         default property alias content: held.data
-        readonly property real named: Math.min(Theme.sized(190), Math.max(Theme.sized(190), width * 0.3))
+        readonly property real named: screen.labelWidth
         width: parent.width
         visible: screen.matches(title + " " + tip)
         spacing: Theme.gapLine
@@ -61,7 +62,7 @@ Item {
             spacing: Theme.gap
             RowLayout {
                 Layout.preferredWidth: line.named
-                Layout.minimumWidth: Theme.sized(190)
+                Layout.minimumWidth: line.named
                 Layout.maximumWidth: line.named
                 Layout.alignment: Qt.AlignTop
                 Layout.topMargin: Theme.gapTiny
@@ -75,7 +76,7 @@ Item {
         Text {
             id: help
             visible: line.tip !== ""
-            x: line.named + 8
+            x: line.named + Theme.gap
             width: parent.width - x
             wrapMode: Text.WordWrap
             color: Theme.ink3
@@ -130,12 +131,12 @@ Item {
         height: parent.height
         color: Theme.panel
         Column {
-            x: 8
-            y: 10
-            width: parent.width - 16
+            x: Theme.gap
+            y: Theme.gapMedium
+            width: parent.width - 2 * Theme.gap
             spacing: Theme.gapHair
             FilterField { id: find; width: parent.width; placeholder: Theme.say("Find a setting"); onTextChanged: screen.finding = text }
-            Item { width: 1; height: 6 }
+            Item { width: 1; height: Theme.gapSmall }
             Repeater {
                 id: partRows
                 model: screen.parts
@@ -164,7 +165,7 @@ Item {
                     Keys.onSpacePressed: pick(index)
                     Keys.onReturnPressed: pick(index)
                     FocusRing { anchors.margins: -2 }
-                    Text { x: 10; anchors.verticalCenter: parent.verticalCenter; color: choice.on ? Theme.accentInk : Theme.ink; font.pixelSize: Theme.body; text: Theme.say(choice.modelData) }
+                    Text { x: Theme.gapMedium; anchors.verticalCenter: parent.verticalCenter; color: choice.on ? Theme.accentInk : Theme.ink; font.pixelSize: Theme.body; text: Theme.say(choice.modelData) }
                     HoverHandler { id: choiceHover }
                     TapHandler { onTapped: choice.pick(choice.index) }
                 }
@@ -177,7 +178,7 @@ Item {
         id: flick
         anchors.fill: parent
         anchors.leftMargin: nav.width
-        contentHeight: page.implicitHeight + 48
+        contentHeight: page.y + page.implicitHeight + Theme.gapPage + 2 * Theme.gapCard
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: Scroller {}
@@ -185,9 +186,10 @@ Item {
 
         Column {
             id: page
-            width: Math.min(Theme.sized(860), flick.width - 52)
-            x: Math.max(26, (flick.width - width) / 2)
-            y: 14
+            readonly property real gutter: Theme.gapPage + Theme.gapSmall
+            width: Math.min(Theme.sized(860), flick.width - 2 * gutter)
+            x: Math.max(gutter, (flick.width - width) / 2)
+            y: Theme.gapCard
             spacing: Theme.gapSmall
 
             RowLayout {
@@ -391,7 +393,7 @@ Item {
                         id: fontButton
                         menu: true
                         text: screen.info.font || Theme.say("System font")
-                        onClicked: fontPicker.open()
+                        onClicked: fontPicker.visible = !fontPicker.visible
                     }
                     Popup {
                         enter: PopIn {}
@@ -401,9 +403,9 @@ Item {
                         parent: fontButton
                         y: fontButton.height + 4
                         width: Theme.sized(320)
-                        height: 380
+                        height: Theme.sized(380)
                         padding: Theme.gap
-                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                         background: Rectangle { radius: Theme.cornerLarge; color: Theme.bar; border.width: 1; border.color: Theme.line }
                         onOpened: { fontFilter.text = ""; fontFilter.focusInput() }
                         contentItem: ColumnLayout {
@@ -425,9 +427,9 @@ Item {
                                     radius: Theme.corner
                                     color: familyHover.hovered ? Theme.accent : "transparent"
                                     Text {
-                                        x: 8
+                                        x: Theme.gap
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 16
+                                        width: parent.width - 2 * Theme.gap
                                         elide: Text.ElideRight
                                         color: familyHover.hovered ? Theme.accentInk : Theme.ink
                                         font.pixelSize: Theme.title
@@ -575,8 +577,8 @@ Item {
                 }
                 Text {
                     visible: Hub.settings.communityProblem !== ""
-                    x: 198
-                    width: parent.width - 200
+                    x: screen.labelWidth + Theme.gap
+                    width: parent.width - x
                     wrapMode: Text.WordWrap
                     color: Theme.err
                     font.pixelSize: Theme.body

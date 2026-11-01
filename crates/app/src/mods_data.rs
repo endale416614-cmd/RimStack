@@ -234,6 +234,8 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "othersThrough"]
         fn others_through(self: &ModsData, active: bool, from: i32, to: i32) -> QVariant;
+        #[qinvokable]
+        fn carried(self: &ModsData, ids: &QVariant) -> QVariant;
         /// `[earlier, later]`; null unless both are in it.
         #[qinvokable]
         #[cxx_name = "inLoadOrder"]
@@ -345,6 +347,7 @@ pub struct ModsDataRust {
     upkeep_problem: QString,
     app: crate::hub::Given,
     order: LoadOrder,
+    same: std::collections::HashMap<ModId, ModId>,
     demo: bool,
     records: bool,
 }
@@ -396,6 +399,7 @@ impl Default for ModsDataRust {
             upkeep_problem: QString::default(),
             app: crate::hub::Given::default(),
             order: LoadOrder::demo(0, 0),
+            same: Default::default(),
             demo: false,
             records: true,
         }
@@ -510,12 +514,15 @@ impl qobject::ModsData {
                     order.set_by_name(&app, me.by_name);
                 }
                 order.set_filter(&me.filter.to_string());
+                let same = me.order.same_mods_in(&order);
                 me.as_mut().rust_mut().get_mut().order = order;
                 me.as_mut().set_rescanning(false);
                 if anew {
+                    let kept = id(me.selected).and_then(|was| same.get(&was).copied());
+                    me.as_mut().rust_mut().get_mut().same = same;
+                    me.as_mut().set_selected(kept.map_or(-1, ModId::to_qml));
                     let version = me.library_version + 1;
                     me.as_mut().set_library_version(version);
-                    me.as_mut().set_selected(-1);
                 }
                 me.as_mut().show();
                 me.read_files();

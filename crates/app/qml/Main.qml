@@ -6,12 +6,13 @@ import RimStack.Ui
 
 ApplicationWindow {
     id: window
-    width: 1440
-    height: 860
+    width: Theme.sized(1440)
+    height: Theme.sized(860)
     onWidthChanged: if (shotPath === "" && visible) Theme.stored.windowWidth = width
     onHeightChanged: if (shotPath === "" && visible) Theme.stored.windowHeight = height
-    minimumWidth: 1000
-    minimumHeight: 560
+    readonly property size smallest: Qt.size(Theme.sized(1000), Theme.sized(560))
+    minimumWidth: Math.min(Screen.desktopAvailableWidth, smallest.width)
+    minimumHeight: Math.min(Screen.desktopAvailableHeight, smallest.height)
     visible: true
     title: Theme.say("RimStack")
     color: Theme.win
@@ -153,7 +154,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 currentIndex: window.section
-                ModsScreen {}
+                ModsScreen { id: modsScreen }
                 Loader {
                     active: window.section === 1 || item !== null
                     sourceComponent: DownloadsScreen {
@@ -206,7 +207,7 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.bottom: parent.bottom
             anchors.leftMargin: Theme.gapCard
-            anchors.bottomMargin: 38
+            anchors.bottomMargin: statusBar.height + Theme.gapLarge
             z: 20
         }
     }
@@ -231,7 +232,7 @@ ApplicationWindow {
     Commands {
         id: commands
         x: Math.round((window.width - width) / 2)
-        y: 90
+        y: Theme.sized(90)
         findMods: text => Hub.mods.findMods(text, 12).map(m => ({
             name: m.name, group: m.active ? Theme.say("Active mod") : Theme.say("Inactive mod"), run: () => window.showMod(m.modId) }))
         commands: {
@@ -408,7 +409,7 @@ ApplicationWindow {
                 Mods.save()
             }
             const open = Hub.argument("--open")
-            window.opened = { play: topBar.beforePlay, history: statusBar.historyMenu, keys: keysSheet, search: commands, lists: topBar.listsMenu, tray: statusBar.trayMenu, ask: question }[open] || null
+            window.opened = window.openable[open] || null
             if (window.opened && open !== "ask")
                 window.opened.open()
             if (open === "ask")
@@ -421,6 +422,7 @@ ApplicationWindow {
         }
     }
 
+    readonly property var openable: ({ play: topBar.beforePlay, history: statusBar.historyMenu, keys: keysSheet, search: commands, lists: topBar.listsMenu, view: modsScreen.viewMenu, columns: modsScreen.popMenu, tray: statusBar.trayMenu, ask: question })
     property var opened: null
     property bool readyMarked: false
     onFrameSwapped: {

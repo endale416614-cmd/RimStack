@@ -28,14 +28,14 @@ Rectangle {
 
     readonly property bool asking: search.asking
     visible: search.active
-    implicitHeight: visible ? Math.max(44, words.implicitHeight + 18) : 0
+    implicitHeight: visible ? Math.max(Theme.sized(44), words.implicitHeight + 2 * Theme.gapMedium) : 0
     color: Theme.banner
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: Theme.gapCard
         anchors.rightMargin: Theme.gapLarge
         spacing: Theme.gap
-        Icon { name: "search"; size: 15; color: Theme.moved }
+        Icon { name: "search"; color: Theme.moved }
         Text {
             id: words
             Layout.fillWidth: true
@@ -52,7 +52,6 @@ Rectangle {
         Icon {
             visible: bar.asking
             name: "info"
-            size: Theme.icon
             color: Theme.ink2
             HoverHandler { id: how }
             Tip { over: how.hovered; text: Theme.say("Half of the suspects are switched off in the list now. Do not load or save a colony during a round; the main menu or a new test colony shows whether it breaks.") }

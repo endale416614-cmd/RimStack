@@ -12,11 +12,12 @@ use serde::Serialize;
 pub struct SortCount {
     mods: Vec<Mod>,
     detected: rules::Detected,
+    reading: std::sync::Arc<crate::workspace::Loaded>,
 }
 
 impl SortCount {
     pub fn moves(mut self, app: &App) -> usize {
-        let loaded = app.library();
+        let loaded = self.reading.clone();
         let Ok((library, _)) = &*loaded else {
             return 0;
         };
@@ -44,10 +45,10 @@ pub struct SortMove {
 
 impl LoadOrder {
     pub fn preview_sort(&mut self, app: &App) {
-        if self.preview.is_some() || !self.installed {
+        if self.preview.is_some() || !self.is_installed() {
             return;
         }
-        let loaded = app.library();
+        let loaded = self.reading(app);
         let Ok((library, _)) = &*loaded else {
             return;
         };
@@ -62,7 +63,6 @@ impl LoadOrder {
         if moves == 0 {
             return;
         }
-        let found = rules::all_rules(app, &mut self.detected, library, &mods);
         let names: Vec<&str> = mods.iter().map(|m| m.name.as_str()).collect();
         let categories: Vec<Category> = mods.iter().map(|m| m.category).collect();
         let why = sorted
@@ -70,7 +70,7 @@ impl LoadOrder {
             .iter()
             .zip(&moved)
             .map(|(&old, moved)| {
-                moved.then(|| sort_reasons::moved(old, &found, &names, &categories))
+                moved.then(|| sort_reasons::moved(old, &sorted.kept, &names, &categories))
             })
             .collect();
         let moved_from = sorted
@@ -114,9 +114,11 @@ impl LoadOrder {
 
     /// Off the window's thread. `None` while a sort is on show or the list is made up.
     pub fn sort_count(&self) -> Option<SortCount> {
-        (self.preview.is_none() && self.installed).then(|| SortCount {
+        let reading = self.reading.clone().filter(|_| self.preview.is_none())?;
+        Some(SortCount {
             mods: self.active.mods().to_vec(),
             detected: self.detected.clone(),
+            reading,
         })
     }
 
@@ -206,7 +208,7 @@ fn note(mods: &[Mod], sorted: &rimstack_core::mods::sort::Sorted, moves: usize) 
     let each: Vec<Sentence> = sorted
         .dropped
         .iter()
-        .filter(|r| !matches!(r.kind, Kind::CommunityBottom | Kind::Inferred))
+        .filter(|r| !matches!(r.kind, Kind::CommunityBottom | Kind::Inferred | Kind::Hint))
         .map(|r| describe::rule(r, mods))
         .collect();
     if !each.is_empty() {

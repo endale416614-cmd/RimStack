@@ -2,6 +2,7 @@
 
 use super::{Work, qobject};
 use crate::changes::Changes;
+use crate::qml::values::to_qml;
 use crate::workspace::fetch::{Done, SteamAsk};
 use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
@@ -59,6 +60,10 @@ impl qobject::DownloadsData {
         };
         self.as_mut().set_steamcmd(app.steamcmd().is_some());
         self.as_mut().set_updating(-1);
+        if self.cloning >= 0 {
+            self.as_mut().set_cloning(-1);
+            self.as_mut().show_repositories_again();
+        }
         self.as_mut().set_task_running(false);
         self.as_mut().set_task_note(QString::from(&said));
         self.ended(QString::from(&said), failed);
@@ -140,7 +145,16 @@ impl qobject::DownloadsData {
         });
     }
 
-    pub(super) fn clone_repository(self: Pin<&mut Self>, at: i32) {
+    fn show_repositories_again(mut self: Pin<&mut Self>) {
+        let Ok(queue) = &mut self.as_mut().rust_mut().get_mut().looked_up else {
+            return;
+        };
+        rimstack_core::sources::downloads::recheck(&mut queue.repositories);
+        let shown = to_qml(&*queue);
+        self.set_queue(shown);
+    }
+
+    pub(super) fn clone_repository(mut self: Pin<&mut Self>, at: i32) {
         let link = usize::try_from(at).ok().and_then(|at| {
             let queue = self.looked_up.as_ref().ok()?;
             Some(queue.repositories.get(at)?.link.clone())
@@ -148,6 +162,9 @@ impl qobject::DownloadsData {
         let Some(link) = link else {
             return;
         };
+        if !self.demo {
+            self.as_mut().set_cloning(at);
+        }
         let app = self.app();
         self.task(say!("Cloning {}…", link), move || {
             app.clone_repository(&link)

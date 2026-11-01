@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 /// The most there may be; lower them as QML loses some, never raise them.
 const MOST: [(&str, usize); 7] = [
     // Raised by this fork for the RimSort layout and the actions on several mods.
-    ("functions", 177),
+    ("functions", 176),
     ("timers", 11),
     ("arrow functions", 272),
     ("ifs", 236),
-    ("ternaries", 754),
+    ("ternaries", 748),
     ("array callbacks", 64),
     ("comparisons with a text", 32),
 ];
@@ -37,6 +37,12 @@ fn every_qml() -> Vec<(PathBuf, String)> {
             (path, text)
         })
         .collect()
+}
+
+fn shipped_qml() -> Vec<(PathBuf, String)> {
+    let mut shown = every_qml();
+    shown.retain(|(path, _)| !path.parent().is_some_and(|dir| dir.ends_with("checks")));
+    shown
 }
 
 fn code_lines(all: &[(PathBuf, String)]) -> Vec<(String, String)> {
@@ -102,10 +108,8 @@ fn logic_in(line: &str) -> [usize; 7] {
 
 #[test]
 fn the_logic_in_the_qml_only_grows_less() {
-    let mut shown = every_qml();
-    shown.retain(|(path, _)| !path.parent().is_some_and(|dir| dir.ends_with("checks")));
     let mut found = [0; 7];
-    for (_, line) in code_lines(&shown) {
+    for (_, line) in code_lines(&shipped_qml()) {
         for (total, here) in found.iter_mut().zip(logic_in(&line)) {
             *total += here;
         }
@@ -124,4 +128,131 @@ fn each_kind_of_logic_is_counted_where_it_is_written() {
     let line = r#"if (a) x = list.filter(m => m.kind === "git" && m.name !== "") ? b : c; function f() {}"#;
     assert_eq!(logic_in(line), [1, 0, 1, 1, 1, 1, 1]);
     assert_eq!(logic_in("Timer { id: elif (x) }"), [0, 1, 0, 0, 0, 0, 0]);
+}
+
+/// Bindings that are sizes or places: a number of pixels there follows neither
+/// the text size nor what it sits beside, so it is a token, `Theme.sized(…)` or a measure.
+const GEOMETRY: [&str; 31] = [
+    "width",
+    "height",
+    "implicitWidth",
+    "implicitHeight",
+    "x",
+    "y",
+    "contentWidth",
+    "contentHeight",
+    "maxWidth",
+    "minimumWidth",
+    "maximumWidth",
+    "preferredWidth",
+    "minimumHeight",
+    "maximumHeight",
+    "preferredHeight",
+    "margins",
+    "leftMargin",
+    "rightMargin",
+    "topMargin",
+    "bottomMargin",
+    "padding",
+    "leftPadding",
+    "rightPadding",
+    "topPadding",
+    "bottomPadding",
+    "spacing",
+    "columnSpacing",
+    "rowSpacing",
+    "size",
+    "minimumSize",
+    "pixelSize",
+];
+
+fn without_texts_or_sized(line: &str) -> String {
+    let mut kept = String::new();
+    let mut quote = None;
+    for c in line.chars() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), _) if c == q => quote = None,
+            (None, _) => kept.push(c),
+            _ => {}
+        }
+    }
+    let mut rest = kept.as_str();
+    let mut out = String::new();
+    while let Some((before, after)) = rest.split_once("sized(") {
+        out.push_str(before);
+        rest = after.split_once(')').map_or("", |(_, tail)| tail);
+    }
+    out + rest
+}
+
+fn pixels_in(expression: &str) -> usize {
+    let bytes = expression.as_bytes();
+    let mut found = 0;
+    let mut at = 0;
+    while at < bytes.len() {
+        let start = at;
+        while at < bytes.len() && bytes[at].is_ascii_digit() {
+            at += 1;
+        }
+        if at == start {
+            at += 1;
+            continue;
+        }
+        let before = start.checked_sub(1).map(|b| bytes[b]);
+        let joined = before.is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.');
+        let fraction = bytes.get(at) == Some(&b'.');
+        let ratio = expression[..start].trim_end().ends_with(['*', '/']);
+        if at - start >= 2 && !joined && !fraction && !ratio {
+            found += 1;
+        }
+    }
+    found
+}
+
+fn fixed_sizes_in(line: &str) -> usize {
+    without_texts_or_sized(line)
+        .split(';')
+        .filter_map(|statement| {
+            let statement = statement.rsplit('{').next().unwrap_or(statement);
+            let (name, expression) = statement.split_once(':')?;
+            let name = name.trim().rsplit('.').next()?;
+            GEOMETRY.contains(&name).then(|| pixels_in(expression))
+        })
+        .sum()
+}
+
+#[test]
+fn sizes_follow_the_text_and_their_neighbours() {
+    let mut shown = shipped_qml();
+    shown.retain(|(path, _)| !path.ends_with("Theme.qml"));
+    let found: Vec<String> = code_lines(&shown)
+        .into_iter()
+        .filter(|(_, line)| fixed_sizes_in(line) > 0)
+        .map(|(at, line)| format!("{at}: {}", line.trim()))
+        .collect();
+    assert!(found.is_empty(), "sizes in pixels:\n{}", found.join("\n"));
+}
+
+#[test]
+fn a_size_in_pixels_is_found_where_it_is_written() {
+    assert_eq!(fixed_sizes_in("width: parent.width - 28"), 1);
+    assert_eq!(fixed_sizes_in("Text { x: 110; width: 9 }"), 1);
+    assert_eq!(
+        fixed_sizes_in("width: Theme.sized(150); height: Theme.sized(20) + 12"),
+        1
+    );
+    assert_eq!(
+        fixed_sizes_in(r#"text: "Show 12"; width: screen.width * 0.36"#),
+        0
+    );
+    assert_eq!(
+        fixed_sizes_in("Layout.preferredWidth: Math.min(Theme.sized(360), w)"),
+        0
+    );
+    assert_eq!(fixed_sizes_in("interval: 1400; to: 360"), 0);
+    assert_eq!(
+        fixed_sizes_in("height: Math.min(width * 9 / 16, Theme.sized(220))"),
+        0
+    );
 }

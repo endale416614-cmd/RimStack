@@ -20,7 +20,7 @@ fn group(kind: Kind) -> &'static str {
             named("Community rules")
         }
         Kind::Yours => named("Your rules"),
-        Kind::Inferred => named("Detected from files"),
+        Kind::Inferred | Kind::Hint => named("Detected from files"),
     }
 }
 
@@ -36,7 +36,7 @@ pub fn moved(at: usize, rules: &[Rule], names: &[&str], categories: &[Category])
             (Kind::Requires, Some(by)) if by == at => say!("which it requires"),
             (Kind::Requires, _) => say!("which requires it"),
             (Kind::Yours, _) => say!("by your rule"),
-            (Kind::Inferred, _) => say!("as their files suggest"),
+            (Kind::Inferred | Kind::Hint, _) => say!("as their files suggest"),
             (_, None) => say!("by a community rule"),
             (_, Some(by)) if by == at => say!("by its own rule"),
             _ => say!("by that mod's rule"),

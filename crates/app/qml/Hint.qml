@@ -23,18 +23,19 @@ Popup {
     x: atRight ? parent.width - width : 0
     y: parent ? parent.height + 9 : 0
     width: Theme.sized(280)
-    height: words.implicitHeight + 56
+    height: words.implicitHeight + footer.implicitHeight + 2 * Theme.gapMedium + Theme.gapLarge
     padding: 0
     background: Rectangle {
         radius: Theme.cornerLarge
         color: Theme.accent
-        Rectangle { x: hint.atRight ? parent.width - 26 : 16; y: -5; width: 10; height: 10; rotation: 45; color: Theme.accent }
+        Rectangle { x: hint.atRight ? parent.width - Theme.gapWide - Theme.gapMedium : Theme.gapWide; y: -height / 2; width: Theme.gapMedium; height: width; rotation: 45; color: Theme.accent }
     }
     contentItem: Item {
-        Text { id: words; x: 12; y: 10; width: parent.width - 24; wrapMode: Text.WordWrap; color: Theme.accentInk; font.pixelSize: Theme.body; lineHeight: 1.25; text: hint.text }
+        Text { id: words; x: Theme.gapLarge; y: Theme.gapMedium; width: parent.width - 2 * Theme.gapLarge; wrapMode: Text.WordWrap; color: Theme.accentInk; font.pixelSize: Theme.body; lineHeight: 1.25; text: hint.text }
         RowLayout {
-            x: 12
-            width: parent.width - 24
+            id: footer
+            x: Theme.gapLarge
+            width: parent.width - 2 * Theme.gapLarge
             anchors.bottom: parent.bottom
             anchors.bottomMargin: Theme.gapMedium
             Text { Layout.fillWidth: true; color: Theme.onSelectedDim; font.pixelSize: Theme.small; text: hint.step + " / 3" }

@@ -23,7 +23,7 @@ Rectangle {
 
     Item {
         id: head
-        readonly property bool wrapped: acts.children.length > 0 && name.width + Math.min(said.implicitWidth, Theme.sized(120)) + acts.width + fold.width + 26 > width
+        readonly property bool wrapped: acts.children.length > 0 && name.width + Math.min(said.implicitWidth, Theme.sized(120)) + acts.width + fold.width + Theme.gap + 3 * Theme.gapSmall > width
         readonly property real line: Theme.sized(acts.children.length > 0 && !wrapped ? 34 : 28)
         width: parent.width
         height: line + (wrapped ? Theme.sized(34) : 0)
@@ -47,8 +47,8 @@ Rectangle {
             Tip { text: name.meaning; over: pointed.hovered || head.activeFocus }
         }
         Text { id: said; y: (head.line - height) / 2; anchors.left: name.right; anchors.leftMargin: Theme.gap; anchors.right: head.wrapped ? fold.left : acts.left; anchors.rightMargin: Theme.gapSmall; elide: Text.ElideRight; color: Theme.ink3; font.pixelSize: Theme.small; text: card.note }
-        Row { id: acts; z: 1; x: head.wrapped ? 0 : fold.x - 6 - width; y: head.wrapped ? head.line + (Theme.sized(34) - height) / 2 : (head.line - height) / 2; spacing: Theme.gapSmall }
-        Icon { id: fold; visible: card.key !== ""; width: visible ? 14 : 0; anchors.right: parent.right; y: (head.line - height) / 2; name: "chevron-down"; rotation: -90 * (1 - card.shown); size: 14; color: Theme.ink3 }
+        Row { id: acts; z: 1; x: head.wrapped ? 0 : fold.x - Theme.gapSmall - width; y: head.wrapped ? head.line + (Theme.sized(34) - height) / 2 : (head.line - height) / 2; spacing: Theme.gapSmall }
+        Icon { id: fold; visible: card.key !== ""; width: visible ? Theme.icon : 0; anchors.right: parent.right; y: (head.line - height) / 2; name: "chevron-down"; rotation: -90 * (1 - card.shown); color: Theme.ink3 }
         HoverHandler { cursorShape: card.key !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor }
         // A press on one of its buttons is that button's alone.
         TapHandler { enabled: card.key !== ""; onTapped: point => { if (acts.children.length === 0 || (head.wrapped ? point.position.y < head.line : point.position.x < acts.x)) Theme.fold(card.key) } }

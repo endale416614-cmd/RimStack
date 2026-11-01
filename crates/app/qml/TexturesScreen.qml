@@ -23,6 +23,15 @@ Item {
     Binding { target: Hub.textures; property: "wanted"; value: screen.visible }
 
     readonly property real nameWidth: Theme.sized(460)
+    readonly property real countWidth: Math.max(countHeading.advanceWidth, widestCount.advanceWidth)
+    readonly property real pngWidth: Math.max(pngHeading.advanceWidth, widestSize.advanceWidth)
+    readonly property real ddsWidth: Math.max(ddsHeading.advanceWidth, widestSize.advanceWidth, notConverted.advanceWidth)
+    TextMetrics { id: countHeading; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("Textures") }
+    TextMetrics { id: pngHeading; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("PNG") }
+    TextMetrics { id: ddsHeading; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("DDS") }
+    TextMetrics { id: widestCount; font.pixelSize: Theme.body; text: Theme.count(99999) }
+    TextMetrics { id: widestSize; font.pixelSize: Theme.body; text: screen.megabytes(99999) }
+    TextMetrics { id: notConverted; font.pixelSize: Theme.small; text: Theme.say("Not converted") }
 
     function megabytes(n) {
         if (n <= 0)
@@ -45,7 +54,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.margins: Theme.gapLarge
                 Layout.bottomMargin: Theme.gap
-                implicitHeight: summary.implicitHeight + 16
+                implicitHeight: summary.implicitHeight + 2 * Theme.gap
                 color: "transparent"
                 readonly property int total: screen.report.total || 0
                 readonly property int have: screen.report.have || 0
@@ -185,12 +194,12 @@ Item {
                     anchors.rightMargin: Theme.gapWide
                     spacing: Theme.gapLarge
                     Text { Layout.preferredWidth: screen.nameWidth; Layout.minimumWidth: Theme.sized(80); color: Theme.ink3; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("Mod") }
-                    Text { Layout.preferredWidth: Theme.sized(80); horizontalAlignment: Text.AlignRight; color: Theme.ink3; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("Textures") }
-                    Text { Layout.preferredWidth: Theme.sized(90); horizontalAlignment: Text.AlignRight; color: Theme.ink3; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("PNG") }
-                    Text { Layout.preferredWidth: Theme.sized(90); horizontalAlignment: Text.AlignRight; color: Theme.ink3; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("DDS") }
+                    Text { Layout.preferredWidth: screen.countWidth; horizontalAlignment: Text.AlignRight; color: Theme.ink3; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("Textures") }
+                    Text { Layout.preferredWidth: screen.pngWidth; horizontalAlignment: Text.AlignRight; color: Theme.ink3; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("PNG") }
+                    Text { Layout.preferredWidth: screen.ddsWidth; horizontalAlignment: Text.AlignRight; color: Theme.ink3; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say("DDS") }
                     Item { Layout.fillWidth: true }
                 }
-                Rectangle { anchors.bottom: parent.bottom; x: 6; width: parent.width - 12; height: 1; color: Theme.line }
+                Rectangle { anchors.bottom: parent.bottom; x: Theme.gapSmall; width: parent.width - 2 * Theme.gapSmall; height: 1; color: Theme.line }
             }
 
             ListView {
@@ -241,14 +250,16 @@ Item {
                         anchors.rightMargin: Theme.gapWide
                         spacing: Theme.gapLarge
                         RowLayout {
+                            id: cell
                             // A layout inside a layout takes spare room unless told not to;
                             // the heading's cell does not.
                             Layout.fillWidth: false
                             Layout.preferredWidth: screen.nameWidth
                             Layout.minimumWidth: Theme.sized(80)
                             spacing: Theme.gap
-                            Text { Layout.maximumWidth: screen.nameWidth - 190; elide: Text.ElideRight; color: row.current ? Theme.onSelected : Theme.ink; font.pixelSize: Theme.body; text: row.modelData.name }
+                            Text { Layout.maximumWidth: screen.nameWidth - badge.width - cell.spacing; elide: Text.ElideRight; color: row.current ? Theme.onSelected : Theme.ink; font.pixelSize: Theme.body; text: row.modelData.name }
                             Chip {
+                                id: badge
                                 visible: row.modelData.state !== screen.usual
                                 maxWidth: Theme.sized(190)
                                 Layout.alignment: Qt.AlignVCenter
@@ -259,16 +270,15 @@ Item {
                             }
                             Item { Layout.fillWidth: true }
                         }
-                        Text { Layout.preferredWidth: Theme.sized(80); horizontalAlignment: Text.AlignRight; color: row.quiet; font.pixelSize: Theme.body; text: Theme.count(row.modelData.textures) }
-                        Text { Layout.preferredWidth: Theme.sized(90); horizontalAlignment: Text.AlignRight; color: row.quiet; font.pixelSize: Theme.body; text: screen.megabytes(row.modelData.pngMb) }
+                        Text { Layout.preferredWidth: screen.countWidth; horizontalAlignment: Text.AlignRight; color: row.quiet; font.pixelSize: Theme.body; text: Theme.count(row.modelData.textures) }
+                        Text { Layout.preferredWidth: screen.pngWidth; horizontalAlignment: Text.AlignRight; color: row.quiet; font.pixelSize: Theme.body; text: screen.megabytes(row.modelData.pngMb) }
                         Item {
-                            Layout.preferredWidth: Theme.sized(90)
+                            Layout.preferredWidth: screen.ddsWidth
                             implicitHeight: made.implicitHeight
                             Text { id: made; anchors.right: parent.right; visible: row.modelData.ddsMb > 0; color: row.quiet; font.pixelSize: Theme.body; text: screen.megabytes(row.modelData.ddsMb) }
                             Text { anchors.right: parent.right; anchors.verticalCenter: made.verticalCenter; visible: !made.visible; color: row.faint; font.pixelSize: Theme.small; text: Theme.say("Not converted") }
                         }
                         Btn {
-                            Layout.preferredWidth: Theme.sized(84)
                             visible: row.modelData.notConverted + row.modelData.outOfDate > 0 && !row.modelData.skipped
                             enabled: !screen.tools.busy
                             text: row.verb
@@ -282,7 +292,7 @@ Item {
                 Column {
                     visible: screen.shown.length === 0
                     anchors.centerIn: parent
-                    width: Math.min(parent.width - 80, 460)
+                    width: Math.min(parent.width - 4 * Theme.gapPage, Theme.sized(460))
                     spacing: Theme.gapSmall
                     Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; color: Theme.ink; font.pixelSize: Theme.title; font.weight: Font.DemiBold; text: screen.tools.busy ? Theme.say("Counting textures…") : Theme.say("No textures") }
                     Text { visible: !screen.tools.busy; width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: Theme.ink2; font.pixelSize: Theme.body; lineHeight: 1.3; text: (screen.report.all || 0) === 0 ? "" : Theme.say("None in active mods") }
@@ -301,9 +311,9 @@ Item {
 
             Column {
                 id: side
-                x: 14
-                y: 14
-                width: parent.width - 28
+                x: Theme.gapCard
+                y: Theme.gapCard
+                width: parent.width - 2 * Theme.gapCard
 
                 Column {
                     width: parent.width

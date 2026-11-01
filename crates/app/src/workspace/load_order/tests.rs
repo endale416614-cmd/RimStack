@@ -255,6 +255,32 @@ fn every_row_has_a_key_of_its_own_and_a_mod_row_its_id() {
 }
 
 #[test]
+fn a_mod_row_keeps_its_key_over_a_rescan_shown_or_not_and_each_copy_has_its_own() {
+    let (tmp, app) = installed();
+    std::fs::create_dir_all(tmp.path().join("workshop/123/About")).unwrap();
+    std::fs::write(
+        tmp.path().join("workshop/123/About/About.xml"),
+        "<ModMetaData><packageId>Ann.Roads</packageId></ModMetaData>",
+    )
+    .unwrap();
+    app.rescan();
+    let keys = |order: &LoadOrder| {
+        [Side::Active, Side::Inactive].map(|side| {
+            let rows = order.rows(&app, side).into_iter();
+            rows.map(|r| r.key).collect::<Vec<_>>()
+        })
+    };
+    let shown = LoadOrder::read(&app, true, false);
+    let before = keys(&shown);
+    let folders = before[1].iter();
+    let folders = folders.filter(|key| matches!(key, rows::RowKey::Installed(_, 0)));
+    assert_eq!(folders.count(), 2);
+    app.rescan();
+    assert_eq!(keys(&shown), before);
+    assert_eq!(keys(&LoadOrder::read(&app, true, false)), before);
+}
+
+#[test]
 fn a_sort_of_a_list_in_order_moves_nothing_and_says_so() {
     let (_tmp, app) = installed();
     let mut order = LoadOrder::read(&app, true, false);
@@ -381,4 +407,30 @@ fn a_mod_not_installed_taken_off_the_list_is_gone_from_both() {
     assert_eq!(inactive, ["ann.roads"]);
     assert!(order.undo(&app));
     assert_eq!(app.session().current(), ["gone.mod", "ludeon.rimworld"]);
+}
+
+#[test]
+fn a_selection_is_carried_over_a_rescan_by_folder_and_a_mod_gone_leaves_it() {
+    let (tmp, app) = installed();
+    let old = LoadOrder::read(&app, true, false);
+    let core = old.list(Side::Active).mods()[0].installed.unwrap();
+    let was = roads(&old, Side::Inactive);
+    app.rescan();
+    let new = LoadOrder::read(&app, true, false);
+    let same = old.same_mods_in(&new);
+    let carried = new.carried(&same, &[was, core]);
+    let (core_now, roads_now) = (same[&core], same[&was]);
+    assert!(core_now != core && roads_now == roads(&new, Side::Inactive));
+    assert_eq!(carried.first, roads_now.to_qml());
+    assert!(!carried.active);
+    assert_eq!(
+        carried.also.keys().collect::<Vec<_>>(),
+        [&core_now.to_qml().to_string()]
+    );
+    std::fs::remove_dir_all(tmp.path().join("game/Mods/roads")).unwrap();
+    app.rescan();
+    let newest = LoadOrder::read(&app, true, false);
+    let gone = newest.carried(&new.same_mods_in(&newest), &[roads_now]);
+    assert_eq!(gone.first, -1);
+    assert!(gone.also.is_empty());
 }

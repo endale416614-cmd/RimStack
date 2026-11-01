@@ -133,6 +133,7 @@ pub struct Details {
     sub: String,
     patches: Vec<Patched>,
     category: Option<&'static str>,
+    held: Sentence,
     problems: Vec<ProblemSaid>,
     your_rules: Vec<OwnRule>,
     detected: Vec<Detected>,
@@ -197,6 +198,7 @@ pub struct Overview {
     other_warnings: usize,
     slowest: Vec<Slow>,
     load_times: bool,
+    load_times_how: Sentence,
     installed: usize,
     missing: usize,
     unreadable: usize,
@@ -271,7 +273,7 @@ impl LoadOrder {
     }
 
     pub fn details(&mut self, app: &App, id: ModId) -> Details {
-        let loaded = app.library();
+        let loaded = self.reading(app);
         let Ok((library, _)) = &*loaded else {
             return Details::default();
         };
@@ -390,7 +392,15 @@ impl LoadOrder {
             .collect();
         if let Some(at) = self.active.position_of(id) {
             let listed = &self.active.mods()[at];
-            said.category = Some(listed.category.label());
+            said.category = Some(listed.filed.label());
+            if !listed.held_by.is_empty() {
+                let among = Sentence::named(listed.category.label());
+                said.held = say!(
+                    "Sits among {} because {} has to load after it.",
+                    among.inside(),
+                    listed.held_by
+                );
+            }
             let own = self.troubles.get(at).map(Vec::as_slice).unwrap_or_default();
             said.problems = own.iter().map(|t| ProblemSaid::of(listed, t)).collect();
             said.offer_trust = said.problems.iter().any(|t| t.trust);
@@ -505,7 +515,7 @@ impl LoadOrder {
     }
 
     pub fn overview(&self, app: &App) -> Overview {
-        let loaded = app.library();
+        let loaded = self.reading(app);
         let Ok((library, took)) = &*loaded else {
             return Overview::default();
         };
@@ -560,6 +570,7 @@ impl LoadOrder {
             .collect();
         let community = app.community();
         let tally = describe::tally(&self.troubles);
+        let load_times = mods.iter().any(|m| m.load_micros.is_some());
         Overview {
             game_version: library.game_version.clone(),
             categories: Category::ALL
@@ -574,7 +585,14 @@ impl LoadOrder {
             version_only: tally.version_only,
             other_warnings: tally.other_warnings,
             slowest: details::slowest(mods, 5),
-            load_times: mods.iter().any(|m| m.load_micros.is_some()),
+            load_times,
+            load_times_how: if load_times {
+                Sentence::default()
+            } else {
+                say!(
+                    "Load times come from the Loading Progress mod: activate it, tick “Track startup loading impact” and “Automatically save startup impact report” in its settings, then start the game."
+                )
+            },
             installed: library.installed.len(),
             missing: library.missing,
             unreadable: library.unreadable,

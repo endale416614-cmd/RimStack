@@ -10,6 +10,10 @@ Item {
     Appear { of: screen }
 
     property bool drawerOpen: Hub.given("--drawer")
+    readonly property real inactiveFirst: Theme.sized(290)
+    readonly property real detailsFirst: Theme.sized(360)
+    readonly property real inactiveWide: Mods.prefs.inactive || inactiveFirst
+    readonly property real detailsWide: Mods.prefs.details || detailsFirst
     Connections {
         target: Mods.prefs
         function onInactiveHiddenChanged() { screen.drawerOpen = false }
@@ -93,13 +97,13 @@ Item {
             }
             // Takes no button, so the drag still reaches the divider.
             MouseArea { x: -Theme.gapHair; width: grip.width + Theme.gapHair + Theme.gapSmall; height: parent.height; acceptedButtons: Qt.NoButton; cursorShape: Qt.SizeHorCursor }
-            TapHandler { onDoubleTapped: grip.move(grip.first ? 360 - detailsPane.width : panes.listsRoom / 2 - inactivePane.width) }
+            TapHandler { onDoubleTapped: grip.move(grip.first ? screen.detailsFirst - detailsPane.width : panes.listsRoom / 2 - inactivePane.width) }
         }
 
         DetailsPane {
             id: detailsPane
-            SplitView.preferredWidth: Mods.prefs.details
-            SplitView.minimumWidth: 260
+            SplitView.preferredWidth: screen.detailsWide
+            SplitView.minimumWidth: Theme.sized(260)
             onWidthChanged: if (panes.resizing) Mods.prefs.details = width
             visible: Hub.mods.problem === ""
         }
@@ -107,7 +111,7 @@ Item {
             id: inactivePane
             enabled: Mods.comparing === null
             SplitView.preferredWidth: panes.inactiveWide
-            SplitView.minimumWidth: 200
+            SplitView.minimumWidth: Theme.sized(200)
             onWidthChanged: if (panes.resizing && panes.listsRoom > 0) Mods.prefs.inactiveShare = width / panes.listsRoom
             visible: Hub.mods.problem === "" && !Mods.prefs.inactiveHidden
         }
@@ -115,7 +119,7 @@ Item {
             id: activePane
             enabled: Mods.comparing === null
             SplitView.fillWidth: true
-            SplitView.minimumWidth: 380
+            SplitView.minimumWidth: Theme.sized(380)
         }
     }
 
@@ -132,7 +136,7 @@ Item {
         id: drawerLoader
         active: screen.drawerOpen && rail.visible
         x: rail.width
-        width: Math.min(Math.max(Theme.sized(260), Mods.prefs.inactive), parent.width - rail.width - 60)
+        width: Math.min(Math.max(Theme.sized(260), screen.inactiveWide), parent.width - rail.width - Theme.sized(60))
         height: parent.height - bulk.height
         z: 1
         sourceComponent: InactivePane {
@@ -142,7 +146,7 @@ Item {
             transform: Translate { id: drawerShift }
             NumberAnimation { target: drawerShift; property: "x"; from: -drawerLoader.width; to: 0; duration: Theme.calm; easing.type: Easing.OutCubic; running: true }
             Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.edge }
-            Rectangle { anchors.left: parent.right; width: 12; height: parent.height; gradient: Gradient { orientation: Gradient.Horizontal; GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.3) } GradientStop { position: 1; color: "transparent" } } }
+            Rectangle { anchors.left: parent.right; width: Theme.gapLarge; height: parent.height; gradient: Gradient { orientation: Gradient.Horizontal; GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.3) } GradientStop { position: 1; color: "transparent" } } }
         }
     }
 
@@ -178,15 +182,15 @@ Rectangle {
     color: Theme.accent
     opacity: 0.9
     readonly property point at: screen.mapFromItem(null, Mods.drag.point.x, Mods.drag.point.y)
-    x: at.x + 10
+    x: at.x + Theme.gapMedium
     y: at.y - height / 2
     Drag.active: visible
-    Drag.hotSpot.x: -10
+    Drag.hotSpot.x: -Theme.gapMedium
     Drag.hotSpot.y: height / 2
     Text {
         anchors.verticalCenter: parent.verticalCenter
-        x: 10
-        width: parent.width - 20
+        x: Theme.gapMedium
+        width: parent.width - 2 * Theme.gapMedium
         elide: Text.ElideRight
         color: "white"
         font.pixelSize: Theme.body
@@ -313,6 +317,8 @@ Timer {
 
     // `visible` is true from the click; `opened` only once the menu has faded in.
     readonly property alias menuOpen: rowMenu.visible
+    readonly property alias viewMenu: activePane.viewMenu
+    readonly property alias popMenu: rowMenu
 
     Loader {
         active: (Mods.checkMode !== "" && Mods.checkMode !== "pointer") || Theme.selfTest
@@ -323,7 +329,7 @@ Timer {
         source: Mods.checkMode === "pointer" ? "qrc:/qt/qml/RimStack/Ui/qml/checks/PointerChecks.qml" : ""
         onLoaded: {
             item.screen = screen
-            item.activeList = activePane.list
+            item.activePane = activePane
             item.inactiveList = inactivePane.list
             item.details = detailsPane
         }

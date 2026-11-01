@@ -33,6 +33,7 @@ pub mod qobject {
         #[qproperty(bool, task_running, cxx_name = "taskRunning")]
         /// The checkout being brought up to its remote, by mod id; -1 for none.
         #[qproperty(i32, updating)]
+        #[qproperty(i32, cloning)]
         type DownloadsData = super::DownloadsDataRust;
     }
 
@@ -140,6 +141,7 @@ pub struct DownloadsDataRust {
     task_note: QString,
     task_running: bool,
     updating: i32,
+    cloning: i32,
     app: crate::hub::Given,
     demo: bool,
     checked: Updates,
@@ -171,6 +173,7 @@ impl Default for DownloadsDataRust {
             task_note: QString::default(),
             task_running: false,
             updating: -1,
+            cloning: -1,
             app: crate::hub::Given::default(),
             demo: false,
             checked: Updates::default(),

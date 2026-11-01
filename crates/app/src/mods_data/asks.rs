@@ -171,6 +171,11 @@ impl qobject::ModsData {
         to_qml(&others.map(|ids| ids.into_iter().map(ModId::to_qml).collect::<Vec<_>>()))
     }
 
+    pub(super) fn carried(&self, given: &QVariant) -> QVariant {
+        let selected = ids(given).unwrap_or_default();
+        to_qml(&self.order.carried(&self.same, &selected))
+    }
+
     pub(super) fn in_load_order(&self, a: i32, b: i32) -> QVariant {
         let list = self.order.list(Side::Active);
         let ordered = id(a).zip(id(b)).and_then(|(a, b)| list.in_load_order(a, b));

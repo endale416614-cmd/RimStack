@@ -88,10 +88,12 @@ fn main() {
                 "qml/mods/ListSummary.qml",
                 "qml/EmptyState.qml",
                 "qml/Prompt.qml",
+                "qml/Scrolled.qml",
                 "qml/mods/SortMoves.qml",
                 "qml/checks/ModsChecks.qml",
                 "qml/checks/PointerChecks.qml",
                 "qml/checks/ScreensChecks.qml",
+                "qml/checks/LayoutChecks.qml",
                 "qml/SavesScreen.qml",
                 "qml/LogsScreen.qml",
                 "qml/TexturesScreen.qml",
@@ -106,6 +108,8 @@ fn main() {
     .qrc_resources(["assets/rimstack.svg"])
     .qt_module("Quick")
     .qt_module("QuickControls2")
+    .crate_include_root(None)
+    .include_dir(std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets the manifest folder"))
     .files([
         "src/hub.rs",
         "src/settings_data.rs",

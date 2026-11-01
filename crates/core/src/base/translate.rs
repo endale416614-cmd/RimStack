@@ -6,7 +6,8 @@ pub const LOCALE: &str = "@locale";
 
 /// A plural text gives its forms after "one", in CLDR's order, with a bar between:
 /// "{} mody|{} modów" in Polish is few, then many. A category without its own form takes
-/// the last one.
+/// the last one. Only the categories a whole count reaches have a form: "other" in Polish
+/// and Russian is for fractions.
 pub struct Counting {
     rules: PluralRules,
     after_one: Vec<PluralCategory>,
@@ -20,9 +21,13 @@ impl Counting {
             .ok()
             .and_then(|locale| PluralRules::try_new_cardinal((&locale).into()).ok())
             .unwrap_or_else(english_rules);
+        let reached: Vec<PluralCategory> = (0..=1000)
+            .chain((4..=9).map(|power| 10usize.pow(power)))
+            .map(|n| rules.category_for(n))
+            .collect();
         let after_one = rules
             .categories()
-            .filter(|category| *category != PluralCategory::One)
+            .filter(|category| *category != PluralCategory::One && reached.contains(category))
             .collect();
         Self { rules, after_one }
     }
@@ -167,6 +172,19 @@ mod tests {
         assert_eq!(polish["{} mods"], "{} mody|{} modów");
         let english = table(r#"{ "{} mods": "x {}" }"#, r#"{ "{} mods": "{} a|{} b" }"#);
         assert_eq!(english["{} mods"], "x {}");
+    }
+
+    #[test]
+    fn a_plural_has_a_form_for_each_category_a_count_can_reach() {
+        let forms = |locale| Counting::of(locale).plural_forms();
+        assert_eq!(
+            [forms("en"), forms("fr"), forms("pl"), forms("ru")],
+            [1, 2, 2, 2]
+        );
+        assert_eq!(
+            misfit("{} mods", "{} мод|{} мода|{} модов", forms("ru")),
+            Some(Misfit::Forms)
+        );
     }
 
     #[test]

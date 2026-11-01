@@ -41,8 +41,8 @@ Item {
             if (!Hub.mods.filesRead)
                 return
             stop()
-            if (Mods.checkMode === "screens") {
-                const made = Qt.createComponent("qrc:/qt/qml/RimStack/Ui/qml/checks/ScreensChecks.qml")
+            if (Mods.checkMode === "screens" || Mods.checkMode === "layout") {
+                const made = Qt.createComponent("qrc:/qt/qml/RimStack/Ui/qml/checks/" + (Mods.checkMode === "layout" ? "LayoutChecks.qml" : "ScreensChecks.qml"))
                 if (made.status !== Component.Ready) {
                     console.log("check FAIL the screen checks did not load: " + made.errorString())
                     Qt.exit(1)
@@ -208,6 +208,13 @@ Item {
             Hub.mods.undo()
             check("undo takes the sort back", order() === start)
         }
+        const outOfOrder = (Mods.overview.troubles || []).find(t => t.fix.action === "sort")
+        if (outOfOrder) {
+            Mods.applyFix(outOfOrder.modId, outOfOrder.fix)
+            check("Sort on a mod out of its own order gives the preview", Hub.mods.previewing)
+            Mods.endSort(false)
+            check("and discarding it leaves the order as it was", order() === start && !Hub.mods.dirty)
+        }
 
         Hub.mods.moveMod(true, 0, 3)
         check("a move makes the list dirty", Hub.mods.dirty && Hub.mods.canUndo && order() !== start)
@@ -318,8 +325,9 @@ Item {
         Mods.columns.size("author", 9999)
         check("within what a column may take", Mods.columns.chosenWidths.author === 420)
         Mods.prefs.columnSizes = sizesBefore
-        const listed = Mods.columns.menu()
-        check("the column menu lists every column, the shown ones marked", listed.length === 3 && listed[0].text.startsWith("✓"))
+        const listed = Mods.columns.entries
+        check("the column menu lists every column, the chosen ones marked", listed.length === 3 && listed[0].text.startsWith("✓"))
+        check("and Load says what its times need while none are known", Mods.columns.loadTimes || listed[2].note.length > 0)
 
         const subRows = () => { let n = 0; for (let r = 0; r < Mods.active.rows(); r++) if (Mods.active.at(r).isSub === true) n += 1; return n }
         const before = subRows()

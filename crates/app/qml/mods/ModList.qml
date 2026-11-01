@@ -10,9 +10,12 @@ ListView {
     readonly property real barRoom: bar.width
     readonly property bool wide: columns && width >= Theme.sized(620)
     readonly property bool roomy: columns && width >= Theme.sized(440)
+    readonly property real numberWidth: Theme.sized(28)
+    property real headingTail: 0
+    readonly property real quickWidth: Math.max(headingTail, Theme.sized(wide ? 124 : 44))
     function roomBeside(shown, author) {
-        const taken = shown.reduce((sum, column) => sum + (column === "author" ? author : Mods.columns.widths[column]) + 12, 0)
-        return width - barRoom - Theme.sized(wide ? 124 : 44) - 90 - taken
+        const taken = shown.reduce((sum, column) => sum + (column === "author" ? author : Mods.columns.widths[column]) + Theme.gapLarge, 0)
+        return width - barRoom - quickWidth - numberWidth - 2 * Theme.gapWide - 2 * Theme.gapLarge - taken
     }
     readonly property int nameRoom: Theme.sized(180)
     readonly property int authorWidth: roomBeside(roomy ? Mods.columns.shown : [], Mods.columns.widths.author) >= nameRoom ? Mods.columns.widths.author : Theme.sized(86)
@@ -45,7 +48,7 @@ ListView {
             anchors.fill: parent
             onEntered: Mods.drag.target = { model: end.listView.model, modIndex: end.listView.model.count, item: end }
             onExited: if (Mods.drag.target && Mods.drag.target.item === end) Mods.drag.target = null
-            Rectangle { visible: parent.containsDrag; x: 6; width: parent.width - 12; height: 2; radius: Math.min(width, height) / 2; color: Theme.focus }
+            Rectangle { visible: parent.containsDrag; x: Theme.gapSmall; width: parent.width - 2 * Theme.gapSmall; height: 2; radius: Math.min(width, height) / 2; color: Theme.focus }
         }
     }
     activeFocusOnTab: true
@@ -87,13 +90,13 @@ ListView {
         color: list.columns ? Theme.win : Theme.panel
         Rectangle { x: 2; width: 3; height: parent.height; color: Theme.categoryColours[list.topCategory] || Theme.ink3; opacity: 0.6 }
         Row {
-            x: 32
+            x: Theme.gapWide + Theme.sized(10) + Theme.gapSmall
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.gapSmall
-            Icon { name: Theme.categoryIcons[list.topCategory] || ""; color: Theme.categoryColours[list.topCategory] || Theme.ink2; size: 14; anchors.verticalCenter: parent.verticalCenter }
+            Icon { name: Theme.categoryIcons[list.topCategory] || ""; color: Theme.categoryColours[list.topCategory] || Theme.ink2; anchors.verticalCenter: parent.verticalCenter }
             Text { color: Theme.ink; font.pixelSize: Theme.small; font.weight: Font.DemiBold; text: Theme.say(Theme.categoryNames[list.topCategory] || "") }
         }
-        Rectangle { anchors.bottom: parent.bottom; x: 6; width: parent.width - 12; height: 1; color: Theme.line }
+        Rectangle { anchors.bottom: parent.bottom; x: Theme.gapSmall; width: parent.width - 2 * Theme.gapSmall; height: 1; color: Theme.line }
         TapHandler { acceptedButtons: Qt.RightButton; onTapped: point => Mods.categoryMenu(parent, point.position.x, point.position.y, list.topCategory) }
     }
 

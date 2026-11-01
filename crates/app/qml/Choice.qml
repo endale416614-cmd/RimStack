@@ -9,8 +9,8 @@ Rectangle {
     property string title
     property bool stretch: false
     signal picked(int index)
-    readonly property real wordsWidth: options.reduce((sum, option) => sum + chosenWords.advanceWidth(Theme.say(option)), 0)
-    FontMetrics { id: chosenWords; font.pixelSize: Theme.small; font.weight: Font.DemiBold }
+    readonly property real wordsWidth: allWords.advanceWidth
+    TextMetrics { id: allWords; font.pixelSize: Theme.small; font.weight: Font.DemiBold; text: choice.options.map(option => Theme.say(option)).join("") }
     readonly property bool stacked: stretch && (width - 4 - wordsWidth) / Math.max(1, options.length) < 6
     function move(by) {
         const next = current + by
@@ -58,8 +58,9 @@ Rectangle {
                 required property string modelData
                 required property int index
                 readonly property bool on: index === choice.current
-                readonly property real wordWidth: chosenWords.advanceWidth(Theme.say(modelData))
-                width: !choice.stretch ? wordWidth + 24 : choice.stacked ? choice.width - 4 : wordWidth + (choice.width - 4 - choice.wordsWidth) / Math.max(1, choice.options.length)
+                readonly property real wordWidth: optionWords.advanceWidth
+                TextMetrics { id: optionWords; font: allWords.font; text: Theme.say(option.modelData) }
+                width: !choice.stretch ? wordWidth + 2 * Theme.gapLarge : choice.stacked ? choice.width - 4 : wordWidth + (choice.width - 4 - choice.wordsWidth) / Math.max(1, choice.options.length)
                 height: Theme.segment
                 radius: Theme.corner - 1
                 color: "transparent"
@@ -67,7 +68,7 @@ Rectangle {
                 Accessible.name: modelData
                 Accessible.checked: on
                 Accessible.onPressAction: choice.picked(option.index)
-                Text { id: label; anchors.centerIn: parent; Behavior on color { ColorAnimation { duration: Theme.quick } } width: option.width - (choice.stacked ? 20 : 6); horizontalAlignment: choice.stacked ? Text.AlignLeft : Text.AlignHCenter; elide: Text.ElideRight; color: option.on ? Theme.accentInk : Theme.ink2; font.pixelSize: Theme.small; font.weight: option.on ? Font.DemiBold : Font.Normal; text: Theme.say(option.modelData) }
+                Text { id: label; anchors.centerIn: parent; Behavior on color { ColorAnimation { duration: Theme.quick } } width: option.width - (choice.stacked ? 2 * Theme.gapMedium : Theme.gapSmall); horizontalAlignment: choice.stacked ? Text.AlignLeft : Text.AlignHCenter; elide: Text.ElideRight; color: option.on ? Theme.accentInk : Theme.ink2; font.pixelSize: Theme.small; font.weight: option.on ? Font.DemiBold : Font.Normal; text: Theme.say(option.modelData) }
                 TapHandler { onTapped: choice.picked(option.index) }
             }
         }

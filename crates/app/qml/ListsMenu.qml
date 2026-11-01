@@ -19,6 +19,7 @@ Popup {
 
     width: Theme.sized(380)
     padding: Theme.gapLarge
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
     onAboutToShow: problem = ""
     background: Rectangle { radius: Theme.cornerLarge; color: Theme.bar; border.width: 1; border.color: Theme.line }
 

@@ -19,7 +19,8 @@ Rectangle {
     color: Theme.bar
     Rectangle { width: parent.width; height: 1; color: Theme.edge }
     Row {
-        x: 14
+        id: leftSide
+        x: Theme.gapCard
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.gapWide
         Text {
@@ -30,7 +31,7 @@ Rectangle {
         }
         Text {
             visible: Notices.hint !== "" && Notices.hint !== last.tip
-            width: Math.min(implicitWidth, strip.width - 420)
+            width: Math.max(0, Math.min(implicitWidth, rightSide.x - leftSide.x - x - Theme.gapWide))
             elide: Text.ElideRight
             color: Theme.ink
             font.pixelSize: Theme.small
@@ -73,6 +74,7 @@ Rectangle {
         }
     }
     Row {
+        id: rightSide
         anchors.right: parent.right
         anchors.rightMargin: Theme.gapMedium
         anchors.verticalCenter: parent.verticalCenter
@@ -94,7 +96,7 @@ Rectangle {
             Icon {
                 anchors.verticalCenter: parent.verticalCenter
                 name: "refresh-cw"
-                size: 12
+                size: Theme.sized(12)
                 color: Theme.moved
                 RotationAnimation on rotation { running: tray.visible && !Theme.stored.reduceMotion; from: 0; to: 360; duration: 1400; loops: Animation.Infinite }
             }
@@ -111,7 +113,7 @@ Rectangle {
                 exit: PopOut {}
                 id: trayMenu
                 x: parent.width - width
-                y: -height - 10
+                y: -height - Theme.gapMedium
                 width: Theme.sized(380)
                 padding: Theme.gapLarge
                 background: Rectangle { radius: Theme.cornerLarge; color: Theme.bar; border.width: 1; border.color: Theme.line }

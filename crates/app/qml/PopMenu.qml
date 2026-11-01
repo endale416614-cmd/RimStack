@@ -1,4 +1,4 @@
-// Entries: { text, icon, off, danger, run }, { line: true } for a divider,
+// Entries: { text, note, icon, off, danger, run }, { line: true } for a divider,
 // or { title } for a caption.
 pragma ComponentBehavior: Bound
 import QtQuick
@@ -27,8 +27,8 @@ Popup {
 
     // Clamped to the window here: the entries are not laid out yet when openAt runs.
     property point wanted
-    x: Math.max(4, Math.min(wanted.x, parent.width - width - 4))
-    y: Math.max(4, Math.min(wanted.y, parent.height - height - 4))
+    x: Math.max(Theme.gapTiny, Math.min(wanted.x, parent.width - width - Theme.gapTiny))
+    y: Math.max(Theme.gapTiny, Math.min(wanted.y, parent.height - height - Theme.gapTiny))
     function openAt(item, x, y, entries) {
         menu.entries = entries
         wanted = item.mapToItem(parent, x, y)
@@ -39,6 +39,7 @@ Popup {
     padding: Theme.gapTiny
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     background: Rectangle { radius: Theme.cornerLarge; color: Theme.bar; border.width: 1; border.color: Theme.line }
+    FontMetrics { id: noteFont; font.pixelSize: Theme.small }
     contentItem: Column {
         Keys.onDownPressed: menu.step(1)
         Keys.onUpPressed: menu.step(-1)
@@ -52,11 +53,12 @@ Popup {
                 readonly property bool line: !!modelData.line
                 readonly property bool off: !!modelData.off
                 readonly property bool caption: !!modelData.title
-                implicitWidth: line ? 1 : caption ? heading.implicitWidth + 20 : words.implicitWidth + 46
+                readonly property bool noted: !!modelData.note
+                implicitWidth: line ? 1 : caption ? heading.implicitWidth + 2 * Theme.gapMedium : words.x + Math.max(words.implicitWidth, noteText.width * Number(noted)) + Theme.gapWide
                 width: Math.max(implicitWidth, parent.width)
-                height: line ? 9 : caption ? 22 : 26
-                Text { id: heading; visible: entry.caption; x: 9; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink3; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say(entry.modelData.title || "") }
-                Rectangle { visible: entry.line; y: 4; x: 4; width: parent.width - 8; height: 1; color: Theme.line }
+                height: line ? Theme.gap + Theme.gapLine : caption ? Theme.tag + Theme.gapTiny : Theme.strip + Number(noted) * (noteText.implicitHeight + Theme.gap)
+                Text { id: heading; visible: entry.caption; x: Theme.gapMedium; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink3; font.pixelSize: Theme.caption; font.weight: Font.Medium; text: Theme.say(entry.modelData.title || "") }
+                Rectangle { visible: entry.line; y: Theme.gapTiny; x: Theme.gapTiny; width: parent.width - 2 * Theme.gapTiny; height: 1; color: Theme.line }
                 Rectangle {
                     visible: !entry.line && !entry.caption
                     anchors.fill: parent
@@ -65,15 +67,30 @@ Popup {
                     opacity: entry.off ? 0.4 : 1
                     Accessible.role: Accessible.MenuItem
                     Accessible.name: entry.modelData.text || ""
-                    Rectangle { x: 10; anchors.verticalCenter: parent.verticalCenter; visible: !!entry.modelData.colour; width: 10; height: 10; radius: 5; color: entry.modelData.colour || "transparent" }
-                    Icon { x: 8; anchors.verticalCenter: parent.verticalCenter; visible: !!entry.modelData.icon; name: entry.modelData.icon || ""; size: 14; color: words.color }
+                    Accessible.description: entry.modelData.note || ""
+                    Item { id: strip; width: parent.width; height: Theme.strip }
+                    Rectangle { x: Theme.gapMedium; anchors.verticalCenter: strip.verticalCenter; visible: !!entry.modelData.colour; width: Theme.gapMedium; height: width; radius: width / 2; color: entry.modelData.colour || "transparent" }
+                    Icon { x: Theme.gap; anchors.verticalCenter: strip.verticalCenter; visible: !!entry.modelData.icon; name: entry.modelData.icon || ""; color: words.color }
                     Text {
                         id: words
-                        x: 30
-                        anchors.verticalCenter: parent.verticalCenter
+                        x: 2 * Theme.gap + Theme.icon
+                        anchors.verticalCenter: strip.verticalCenter
                         color: (over.hovered || menu.at === entry.index) && !entry.off ? Theme.accentInk : entry.modelData.danger ? Theme.err : Theme.ink
                         font.pixelSize: Theme.body
                         text: Theme.say(entry.modelData.text || "")
+                    }
+                    Text {
+                        id: noteText
+                        visible: entry.noted
+                        x: words.x
+                        y: strip.height
+                        width: Math.min(implicitWidth, noteFont.averageCharacterWidth * 44)
+                        wrapMode: Text.WordWrap
+                        lineHeight: 1.25
+                        color: words.color
+                        opacity: 0.75
+                        font.pixelSize: Theme.small
+                        text: entry.modelData.note || ""
                     }
                     HoverHandler { id: over }
                     TapHandler {

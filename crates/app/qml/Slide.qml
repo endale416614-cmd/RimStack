@@ -32,22 +32,23 @@ Item {
     Keys.onRightPressed: slide.moved(Math.min(to, value + step))
     Rectangle {
         id: track
-        x: 8
-        width: parent.width - 16
-        height: 4
+        x: knob.width / 2
+        width: parent.width - knob.width
+        height: Theme.gapTiny
         radius: Math.min(width, height) / 2
         anchors.verticalCenter: parent.verticalCenter
         color: Theme.ctl
         Rectangle { width: parent.width * slide.part; height: parent.height; radius: Math.min(width, height) / 2; color: Theme.accent }
     }
     Rectangle {
-        x: track.x + track.width * slide.part - 8
+        id: knob
+        x: track.x + track.width * slide.part - width / 2
         anchors.verticalCenter: parent.verticalCenter
-        width: 16
-        height: 16
+        width: Theme.sized(16)
+        height: width
         radius: Math.min(width, height) / 2
         color: Theme.ink
-        FocusRing { of: slide; corner: 8 }
+        FocusRing { of: slide; corner: knob.radius }
     }
     HoverHandler { cursorShape: Qt.PointingHandCursor }
     TapHandler { onTapped: point => { slide.forceActiveFocus(); slide.put(point.position.x - track.x) } }

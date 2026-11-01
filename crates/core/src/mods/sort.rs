@@ -7,6 +7,7 @@ use std::collections::BinaryHeap;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Sorted {
     pub order: Vec<usize>,
+    pub kept: Vec<Rule>,
     pub dropped: Vec<Rule>,
     pub groups: Vec<usize>,
 }
@@ -42,6 +43,7 @@ pub fn sort(count: usize, rules: &[Rule]) -> Sorted {
     let (kept, dropped) = without_loops(count, rules);
     Sorted {
         order: fewest_moves(count, &kept).expect("kept rules have no loop"),
+        kept,
         dropped,
         groups: vec![0; count],
     }
@@ -50,13 +52,16 @@ pub fn sort(count: usize, rules: &[Rule]) -> Sorted {
 /// Sorting the result again changes nothing.
 pub fn sort_grouped(groups: &[usize], bottom_group: usize, rules: &[Rule]) -> Sorted {
     let count = groups.len();
-    let (kept, dropped) = without_loops(count, rules);
+    let (kept, mut dropped) = without_loops(count, rules);
     let own_place: Vec<usize> = (0..count).collect();
     let any_valid = ordered(count, &kept, &own_place).expect("kept rules have no loop");
 
-    // Belonging at the bottom does not pull the others into its group.
+    // Belonging at the bottom does not pull the others into its group, and neither does a hint.
     let mut after: Vec<Vec<usize>> = vec![Vec::new(); count];
-    for rule in kept.iter().filter(|r| r.kind != Kind::CommunityBottom) {
+    for rule in kept
+        .iter()
+        .filter(|r| !matches!(r.kind, Kind::CommunityBottom | Kind::Hint))
+    {
         after[rule.first].push(rule.then);
     }
     let mut group = groups.to_vec();
@@ -78,9 +83,15 @@ pub fn sort_grouped(groups: &[usize], bottom_group: usize, rules: &[Rule]) -> So
         let earliest = after[m].iter().map(|&later| group[later]).min();
         group[m] = group[m].min(earliest.unwrap_or(usize::MAX));
     }
+    // A hint that would take a mod out of its group gives way, as it does in a loop.
+    let (kept, against): (Vec<Rule>, Vec<Rule>) = kept
+        .into_iter()
+        .partition(|r| r.kind != Kind::Hint || group[r.first] <= group[r.then]);
+    dropped.extend(against);
     let place: Vec<usize> = (0..count).map(|m| group[m] * count + m).collect();
     Sorted {
         order: ordered(count, &kept, &place).expect("kept rules have no loop"),
+        kept,
         dropped,
         groups: group,
     }
@@ -221,7 +232,12 @@ mod tests {
     }
 
     fn random_rules(random: &mut Random, count: usize, how_many: usize) -> Vec<Rule> {
-        let kinds = [Kind::Requires, Kind::LoadAfter, Kind::ForceLoadBefore];
+        let kinds = [
+            Kind::Hint,
+            Kind::Requires,
+            Kind::LoadAfter,
+            Kind::ForceLoadBefore,
+        ];
         (0..how_many)
             .map(|_| Rule {
                 first: random.below(count),
@@ -364,6 +380,21 @@ mod tests {
         let sorted = sort_grouped(&[0, 0, 3, 1], 9, &[rule(2, 0)]);
         assert_eq!(sorted.groups, vec![0, 0, 0, 1]);
         assert_eq!(sorted.order, vec![1, 2, 0, 3]);
+    }
+
+    #[test]
+    fn a_hint_orders_mods_inside_a_group_but_takes_none_out_of_it() {
+        let hint = |first, then| Rule {
+            first,
+            then,
+            kind: Kind::Hint,
+        };
+        let across = sort_grouped(&[0, 0, 3, 1], 9, &[hint(2, 0)]);
+        assert_eq!(across.groups, vec![0, 0, 3, 1]);
+        assert_eq!(across.order, vec![0, 1, 3, 2]);
+        assert_eq!(across.dropped, vec![hint(2, 0)]);
+        let inside = sort_grouped(&[0, 3, 3], 9, &[hint(2, 1)]);
+        assert_eq!(inside.order, vec![0, 2, 1]);
     }
 
     #[test]

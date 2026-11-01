@@ -95,6 +95,13 @@ pub struct Mod {
     pub sub: String,
     /// Microseconds it took at the game's last start, where measured.
     pub load_micros: Option<u32>,
+    /// Its own category, chosen or worked out; `category` is where it sits, which a rule can
+    /// make an earlier one. A sort starts from this.
+    pub filed: Category,
+    /// `filed` was chosen by hand.
+    pub chosen: bool,
+    /// The mod that has to load after it and keeps it in an earlier category than `filed`.
+    pub held_by: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

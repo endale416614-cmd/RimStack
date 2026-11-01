@@ -10,6 +10,14 @@ Column {
     visible: Mods.tab === 0
     topPadding: Theme.gapLarge
     spacing: Theme.gapCard
+    readonly property real labelWidth: Math.max(nameContains.advanceWidth, nameCode.advanceWidth, nameLoad.advanceWidth, namePackage.advanceWidth, nameFolder.advanceWidth, nameFiled.advanceWidth, nameGroup.advanceWidth) + Theme.gapSmall + Theme.sized(12) + Theme.gap
+    TextMetrics { id: nameContains; font.pixelSize: Theme.body; text: Theme.say("Contains") }
+    TextMetrics { id: nameCode; font: nameContains.font; text: Theme.say("Code") }
+    TextMetrics { id: nameLoad; font: nameContains.font; text: Theme.say("Load time") }
+    TextMetrics { id: namePackage; font: nameContains.font; text: Theme.say("Package id") }
+    TextMetrics { id: nameFolder; font: nameContains.font; text: Theme.say("Folder") }
+    TextMetrics { id: nameFiled; font: nameContains.font; text: Theme.say("Filed under") }
+    TextMetrics { id: nameGroup; font: nameContains.font; text: Theme.say("Group") }
     readonly property var clashes: (Mods.info.losesTo || []).map(c => ({ loses: true, clash: c }))
         .concat((Mods.info.winsOver || []).map(c => ({ loses: false, clash: c })))
     readonly property string linkColour: "<style>a { color: " + Theme.focus + "; }</style>"
@@ -52,7 +60,7 @@ Column {
             visible: !!Mods.info.versionOk
             width: parent.width
             spacing: Theme.gap
-            Icon { name: "eye-off"; size: 14; color: Theme.ink3 }
+            Icon { name: "eye-off"; color: Theme.ink3 }
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.fill("Made for RimWorld {}; the warning is ignored.", (Mods.info.madeFor || "")) }
             Btn { text: Theme.say("Warn again"); onClicked: Mods.trust(Mods.selectedId, false) }
         }
@@ -60,7 +68,7 @@ Column {
             visible: Mods.info.problemsIgnored > 0
             width: parent.width
             spacing: Theme.gap
-            Icon { name: "eye-off"; size: 14; color: Theme.ink3 }
+            Icon { name: "eye-off"; color: Theme.ink3 }
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.plural(Mods.info.problemsIgnored || 0, "{} problem is ignored.", "{} problems are ignored.") }
             Btn { text: Theme.say("Warn again"); onClicked: Hub.mods.warnAgain([Mods.selectedId]) }
         }
@@ -157,22 +165,22 @@ Column {
                 required property var modelData
                 width: side.width
                 implicitHeight: factValue.implicitHeight
-                Text { id: factName; width: Theme.sized(92); color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.say(fact.modelData[0]) }
-                CopyText { id: factValue; anchors.left: factName.right; anchors.leftMargin: 4; anchors.right: parent.right; text: fact.modelData[1] }
+                Text { id: factName; width: side.labelWidth; color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.say(fact.modelData[0]) }
+                CopyText { id: factValue; anchors.left: factName.right; anchors.leftMargin: Theme.gapTiny; anchors.right: parent.right; text: fact.modelData[1] }
             }
         }
         RowLayout {
             visible: !!Mods.info.path
             width: parent.width
             spacing: Theme.gap
-            Text { Layout.preferredWidth: Theme.sized(92) - Theme.gap; color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.say("Folder") }
+            Text { Layout.preferredWidth: side.labelWidth; color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.say("Folder") }
             PathText { path: Mods.info.path || ""; copyable: true; openTip: Theme.say("Open folder") }
         }
         RowLayout {
             width: parent.width
             spacing: Theme.gap
-            Defined { Layout.preferredWidth: Theme.sized(92); text: Theme.say("Filed under") }
-            Icon { name: Theme.categoryIcons[Theme.categoryNames.indexOf(Mods.info.category || "")] || "package"; size: 14; color: Theme.categoryColours[Theme.categoryNames.indexOf(Mods.info.category || "")] || Theme.ink2 }
+            Defined { Layout.preferredWidth: side.labelWidth; text: Theme.say("Filed under") }
+            Icon { name: Theme.categoryIcons[Theme.categoryNames.indexOf(Mods.info.category || "")] || "package"; color: Theme.categoryColours[Theme.categoryNames.indexOf(Mods.info.category || "")] || Theme.ink2 }
             Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: Mods.info.categoryChosen ? Theme.fill("{} (chosen)", Theme.say(Mods.info.category || "")) : Theme.say(Mods.info.category || "") }
             Btn {
                 id: fileUnder
@@ -181,10 +189,11 @@ Column {
                 onClicked: Mods.menuRequested(fileUnder, 0, fileUnder.height + 2, Mods.categoryChoices(Mods.selectedId))
             }
         }
+        Text { visible: !!Mods.info.held; width: parent.width; leftPadding: side.labelWidth + Theme.gap; wrapMode: Text.WordWrap; color: Theme.ink2; font.pixelSize: Theme.body; text: Mods.info.held || "" }
         RowLayout {
             width: parent.width
             spacing: Theme.gap
-            Defined { Layout.preferredWidth: Theme.sized(92); text: Theme.say("Group") }
+            Defined { Layout.preferredWidth: side.labelWidth; text: Theme.say("Group") }
             FilterField {
                 id: subBox
                 Layout.fillWidth: true
@@ -236,18 +245,18 @@ Column {
         }
         Rectangle {
             width: parent.width
-            height: Math.max(54, noteBox.implicitHeight + 14)
+            height: Math.max(Theme.sized(54), noteBox.implicitHeight + 2 * Theme.gapSmall)
             radius: Theme.corner
             color: Theme.well
             border.width: 1
             border.color: noteBox.activeFocus ? Theme.focus : Theme.fieldLine
-            Text { x: 10; y: 7; visible: noteBox.text === ""; color: Theme.ink3; font.pixelSize: Theme.body; text: Theme.say("Note") }
+            Text { x: noteBox.x; y: noteBox.y; visible: noteBox.text === ""; color: Theme.ink3; font.pixelSize: Theme.body; text: Theme.say("Note") }
             TextEdit {
                 id: noteBox
                 Accessible.name: Theme.say("Note")
-                x: 10
-                y: 7
-                width: parent.width - 20
+                x: Theme.gapMedium
+                y: Theme.gapSmall
+                width: parent.width - 2 * Theme.gapMedium
                 wrapMode: TextEdit.Wrap
                 color: Theme.ink
                 selectionColor: Theme.accent

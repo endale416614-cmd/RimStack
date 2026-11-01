@@ -17,7 +17,8 @@ Rectangle {
     property bool compact: false
     readonly property bool bare: compact && icon !== ""
     signal clicked()
-    implicitWidth: btnContent.implicitWidth + (large ? 36 : (text === "" || bare) && !menu ? 14 : 20)
+    readonly property real fullWidth: btnLabel.implicitWidth + Number(icon !== "") * (Theme.icon + btnContent.spacing) + Theme.sized(20)
+    implicitWidth: btnContent.implicitWidth + (large ? Theme.sized(36) : (text === "" || bare) && !menu ? Theme.sized(14) : Theme.sized(20))
     implicitHeight: large ? Theme.controlLarge : Theme.control
     radius: Theme.corner
     readonly property real frame: enabled ? 1 : 0.4
@@ -45,7 +46,7 @@ Rectangle {
         anchors.centerIn: parent
         spacing: Theme.gapSmall
         opacity: btn.enabled ? 1 : 0.5
-        Icon { visible: btn.icon !== ""; name: btn.icon; size: Theme.icon; color: btnLabel.color; anchors.verticalCenter: parent.verticalCenter }
+        Icon { visible: btn.icon !== ""; name: btn.icon; color: btnLabel.color; anchors.verticalCenter: parent.verticalCenter }
         Text {
             id: btnLabel
             visible: text !== "" && !btn.bare

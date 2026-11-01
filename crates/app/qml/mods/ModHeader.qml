@@ -15,19 +15,19 @@ Column {
         radius: Theme.cornerLarge
         color: Theme.well
         clip: true
-        Image { anchors.fill: parent; asynchronous: true; fillMode: Image.PreserveAspectFit; sourceSize.width: 720; source: side.large && Mods.info.preview ? Theme.fileUrl(Mods.info.preview) : "" }
+        Image { anchors.fill: parent; asynchronous: true; fillMode: Image.PreserveAspectFit; sourceSize.width: Theme.sized(720); source: side.large && Mods.info.preview ? Theme.fileUrl(Mods.info.preview) : "" }
         HoverHandler { cursorShape: Qt.PointingHandCursor }
         TapHandler { onTapped: side.large = false }
     }
-    Item { visible: side.large && !!Mods.info.preview; width: 1; height: 10 }
+    Item { visible: side.large && !!Mods.info.preview; width: 1; height: Theme.gapMedium }
     RowLayout {
         width: parent.width
         spacing: Theme.gapLarge
         Rectangle {
             visible: !(side.large && !!Mods.info.preview)
             Layout.alignment: Qt.AlignTop
-            implicitWidth: 64
-            implicitHeight: 64
+            implicitWidth: Theme.sized(64)
+            implicitHeight: Theme.sized(64)
             radius: Theme.cornerLarge
             color: Theme.well
             clip: true
@@ -36,7 +36,7 @@ Column {
                 visible: status === Image.Ready
                 asynchronous: true
                 fillMode: Image.PreserveAspectCrop
-                sourceSize.width: 192
+                sourceSize.width: Theme.sized(192)
                 source: Mods.info.preview ? Theme.fileUrl(Mods.info.preview) : ""
             }
             Text { visible: !Mods.info.preview; anchors.centerIn: parent; color: Theme.brand; font.pixelSize: Theme.display; font.weight: Font.DemiBold; text: (Mods.info.name || "?").charAt(0).toUpperCase() }
@@ -64,13 +64,14 @@ Column {
     }
     Flow {
         id: acts
-        readonly property bool narrow: width < Theme.sized(340)
+        readonly property bool narrow: width < toggle.fullWidth + openFolder.fullWidth + workshopPage.fullWidth + 2 * spacing
         width: parent.width
         topPadding: Theme.gapLarge
         spacing: Theme.gapSmall
-        Btn { visible: !Hub.mods.previewing; primary: !Mods.selectedActive; icon: Mods.selectedActive ? "minus" : "plus"; text: Mods.selectedActive ? Theme.say("Deactivate") : Theme.say("Activate"); onClicked: Mods.toggleSelected() }
-        Btn { compact: acts.narrow; icon: "folder-open"; text: Theme.say("Open folder"); onClicked: Qt.openUrlExternally(Theme.fileUrl(Mods.info.path)) }
+        Btn { id: toggle; visible: !Hub.mods.previewing; primary: !Mods.selectedActive; icon: Mods.selectedActive ? "minus" : "plus"; text: Mods.selectedActive ? Theme.say("Deactivate") : Theme.say("Activate"); onClicked: Mods.toggleSelected() }
+        Btn { id: openFolder; compact: acts.narrow; icon: "folder-open"; text: Theme.say("Open folder"); onClicked: Qt.openUrlExternally(Theme.fileUrl(Mods.info.path)) }
         Btn {
+            id: workshopPage
             visible: !!Mods.info.workshop
             compact: acts.narrow
             icon: "external-link"
@@ -86,7 +87,7 @@ Column {
         }
     }
 
-    Item { width: 1; height: 12 }
+    Item { width: 1; height: Theme.gapLarge }
     Choice {
         width: parent.width
         stretch: true

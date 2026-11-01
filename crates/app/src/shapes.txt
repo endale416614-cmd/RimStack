@@ -234,6 +234,11 @@ mod_rows.at: object
   version: text
   versionIgnored: bool
   whyMoved: text
+mods.carried: object
+  active: bool
+  also: map
+    {}: bool
+  first: number
 mods.columnPressed: list
   []: bool or text
 mods.columnWidths: map
@@ -263,6 +268,7 @@ mods.details: object
   gameVersions: text
   groupChoices: list
     []: text
+  held: text
   loadFolders: list
     []: text
   loadTime: text
@@ -368,6 +374,7 @@ mods.detailsOf: object
   gameVersions: text
   groupChoices: list
     []: text
+  held: text
   loadFolders: list
     []: text
   loadTime: text
@@ -485,6 +492,7 @@ mods.overview: object
   gameVersion: text
   installed: number
   loadTimes: bool
+  loadTimesHow: text
   missing: number
   needed: list
     []: text

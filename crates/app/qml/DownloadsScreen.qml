@@ -65,7 +65,7 @@ Item {
     Flickable {
         id: scroller
         anchors.fill: parent
-        contentHeight: page.implicitHeight + 32
+        contentHeight: page.implicitHeight + 2 * Theme.gapWide
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         Wheel {}
@@ -73,9 +73,9 @@ Item {
 
         Column {
             id: page
-            x: Math.max(16, (parent.width - width) / 2)
-            y: 16
-            width: screen.width - 32
+            x: Math.max(Theme.gapWide, (parent.width - width) / 2)
+            y: Theme.gapWide
+            width: screen.width - 2 * Theme.gapWide
             spacing: Theme.gapPage
 
             Column {
@@ -99,6 +99,76 @@ Item {
                         text: screen.downloads.queueBusy ? Theme.say("Asking Steam…") : Theme.say("Look up")
                         tip: Theme.say("Looks up what is pasted beside it: paste a link or an id first.")
                         onClicked: screen.downloads.lookUp(pasted.text)
+                    }
+                }
+            }
+
+            Card {
+                visible: screen.queue.length + screen.repositories.length > 0 || !!(screen.found.problem || screen.found.note)
+                title: Theme.say("Look up")
+                note: screen.queue.length + screen.repositories.length > 0 ? screen.queue.length + screen.repositories.length : ""
+                actions: [
+                    Btn {
+                        visible: screen.wanted.length > 0
+                        icon: "plus"
+                        text: Theme.say("Subscribe in Steam")
+                        tip: Theme.say("Steam, which must be running, subscribes to each and downloads it; it keeps them up to date afterwards.")
+                        onClicked: screen.downloads.subscribeWanted()
+                    },
+                    Btn {
+                        visible: screen.wanted.length > 0 && screen.steamcmd
+                        icon: "download"
+                        text: Theme.say("Download with SteamCMD…")
+                        tip: Theme.fill("Into the game's own Mods folder, {}, without subscribing: Steam will not update these.", (screen.info.localMods || ""))
+                        onClicked: Notices.ask({
+                            title: Theme.plural(screen.wanted.length, "Download {} mod with SteamCMD", "Download {} mods with SteamCMD"),
+                            lines: [Theme.say("Each is downloaded and copied into the game's own Mods folder:"), { path: screen.info.localMods || "" }, Theme.say("Steam does not update mods installed this way.")],
+                            label: Theme.say("Download"), run: () => screen.downloads.downloadWanted() })
+                    }
+                ]
+                Text { visible: screen.queue.length === 0 && !!(screen.found.problem || screen.found.note); width: parent.width; wrapMode: Text.WordWrap; color: screen.found.problem ? Theme.err : Theme.ink2; font.pixelSize: Theme.body; text: screen.found.problem || screen.found.note || "" }
+                Repeater {
+                    model: screen.repositories
+                    RowLayout {
+                        id: repository
+                        required property var modelData
+                        required property int index
+                        readonly property bool cloning: screen.downloads.cloning === index
+                        width: page.width
+                        height: Theme.sized(32)
+                        spacing: Theme.gapLarge
+                        Icon { name: "git-branch"; color: Theme.ink3 }
+                        Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: repository.modelData.name }
+                        Chip { visible: repository.modelData.installed; tone: Theme.ok; icon: "check"; text: Theme.say("Installed") }
+                        Btn { icon: "external-link"; text: Theme.say("Repository page"); onClicked: Qt.openUrlExternally(repository.modelData.link) }
+                        Btn {
+                            visible: !repository.modelData.installed
+                            enabled: !!screen.info.git && !!repository.modelData.into && screen.downloads.cloning < 0
+                            primary: !repository.cloning
+                            icon: "download"
+                            text: repository.cloning ? Theme.say("Cloning…") : Theme.say("Clone…")
+                            tip: screen.info.git ? Theme.say("git clone into the game's own Mods folder; Check for updates then asks its repository") : Theme.say("Git is not installed")
+                            onClicked: Notices.ask({
+                                title: Theme.fill("Clone {}", repository.modelData.name),
+                                lines: [Theme.say("git clone, from"), { path: repository.modelData.link }, Theme.say("Into"), { path: repository.modelData.into }],
+                                label: Theme.say("Clone"), run: () => screen.downloads.cloneRepository(repository.index) })
+                        }
+                    }
+                }
+                Repeater {
+                    model: screen.queue
+                    RowLayout {
+                        id: item
+                        required property var modelData
+                        width: page.width
+                        height: Theme.sized(32)
+                        spacing: Theme.gapLarge
+                        Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: item.modelData.title || item.modelData.id }
+                        Cell { Layout.preferredWidth: Theme.sized(100); text: screen.day(item.modelData.updated) }
+                        Cell { Layout.preferredWidth: Theme.sized(70); horizontalAlignment: Text.AlignRight; text: screen.megabytes(item.modelData.megabytes) }
+                        Chip { visible: !item.modelData.title; tone: Theme.err; icon: "circle-alert"; text: Theme.say("Not on the Workshop") }
+                        Chip { visible: !!item.modelData.title && item.modelData.installed; tone: Theme.ok; icon: "check"; text: Theme.say("Installed") }
+                        Btn { visible: !!item.modelData.title && !item.modelData.installed; icon: "external-link"; text: Theme.say("Workshop page"); onClicked: Theme.openWorkshop(item.modelData.id) }
                     }
                 }
             }
@@ -267,7 +337,7 @@ Item {
                         width: page.width
                         height: Theme.sized(30)
                         spacing: Theme.gapLarge
-                        Icon { name: "git-branch"; size: Theme.icon; color: Theme.ink3 }
+                        Icon { name: "git-branch"; color: Theme.ink3 }
                         Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: checkout.modelData.name }
                         Chip {
                             maxWidth: Theme.sized(340)
@@ -376,7 +446,7 @@ Item {
                         RowLayout {
                             width: parent.width
                             spacing: Theme.gap
-                            Icon { name: changed.modelData.git ? "git-branch" : "cloud"; size: 14; color: changed.reached ? Theme.focus : Theme.ink3 }
+                            Icon { name: changed.modelData.git ? "git-branch" : "cloud"; color: changed.reached ? Theme.focus : Theme.ink3 }
                             Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; font.weight: Font.Medium; font.underline: changed.reached; text: changed.modelData.name; Accessible.role: Accessible.ListItem; Accessible.name: text }
                             Chip { visible: !changed.modelData.active; text: Theme.say("inactive") }
                             Chip { visible: changed.modelData.git; tone: Theme.moved; text: Theme.plural(changed.modelData.notes.length, "{} commit", "{} commits") }
@@ -423,74 +493,6 @@ Item {
             }
 
             Card {
-                visible: screen.queue.length + screen.repositories.length > 0 || !!(screen.found.problem || screen.found.note)
-                title: Theme.say("Look up")
-                note: screen.queue.length + screen.repositories.length > 0 ? screen.queue.length + screen.repositories.length : ""
-                actions: [
-                    Btn {
-                        visible: screen.wanted.length > 0
-                        icon: "plus"
-                        text: Theme.say("Subscribe in Steam")
-                        tip: Theme.say("Steam, which must be running, subscribes to each and downloads it; it keeps them up to date afterwards.")
-                        onClicked: screen.downloads.subscribeWanted()
-                    },
-                    Btn {
-                        visible: screen.wanted.length > 0 && screen.steamcmd
-                        icon: "download"
-                        text: Theme.say("Download with SteamCMD…")
-                        tip: Theme.fill("Into the game's own Mods folder, {}, without subscribing: Steam will not update these.", (screen.info.localMods || ""))
-                        onClicked: Notices.ask({
-                            title: Theme.plural(screen.wanted.length, "Download {} mod with SteamCMD", "Download {} mods with SteamCMD"),
-                            lines: [Theme.say("Each is downloaded and copied into the game's own Mods folder:"), { path: screen.info.localMods || "" }, Theme.say("Steam does not update mods installed this way.")],
-                            label: Theme.say("Download"), run: () => screen.downloads.downloadWanted() })
-                    }
-                ]
-                Text { visible: screen.queue.length === 0 && !!(screen.found.problem || screen.found.note); width: parent.width; wrapMode: Text.WordWrap; color: screen.found.problem ? Theme.err : Theme.ink2; font.pixelSize: Theme.body; text: screen.found.problem || screen.found.note || "" }
-                Repeater {
-                    model: screen.repositories
-                    RowLayout {
-                        id: repository
-                        required property var modelData
-                        required property int index
-                        width: page.width
-                        height: Theme.sized(32)
-                        spacing: Theme.gapLarge
-                        Icon { name: "git-branch"; size: 14; color: Theme.ink3 }
-                        Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: repository.modelData.name }
-                        Chip { visible: repository.modelData.installed; tone: Theme.ok; icon: "check"; text: Theme.say("Installed") }
-                        Btn { icon: "external-link"; text: Theme.say("Repository page"); onClicked: Qt.openUrlExternally(repository.modelData.link) }
-                        Btn {
-                            visible: !repository.modelData.installed
-                            enabled: !!screen.info.git && !!repository.modelData.into
-                            icon: "download"
-                            text: Theme.say("Clone…")
-                            tip: screen.info.git ? Theme.say("git clone into the game's own Mods folder; Check for updates then asks its repository") : Theme.say("Git is not installed")
-                            onClicked: Notices.ask({
-                                title: Theme.fill("Clone {}", repository.modelData.name),
-                                lines: [Theme.say("git clone, from"), { path: repository.modelData.link }, Theme.say("Into"), { path: repository.modelData.into }],
-                                label: Theme.say("Clone"), run: () => screen.downloads.cloneRepository(repository.index) })
-                        }
-                    }
-                }
-                Repeater {
-                    model: screen.queue
-                    RowLayout {
-                        id: item
-                        required property var modelData
-                        width: page.width
-                        height: Theme.sized(32)
-                        spacing: Theme.gapLarge
-                        Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: item.modelData.title || item.modelData.id }
-                        Cell { Layout.preferredWidth: Theme.sized(100); text: screen.day(item.modelData.updated) }
-                        Cell { Layout.preferredWidth: Theme.sized(70); horizontalAlignment: Text.AlignRight; text: screen.megabytes(item.modelData.megabytes) }
-                        Chip { visible: !item.modelData.title; tone: Theme.err; icon: "circle-alert"; text: Theme.say("Not on the Workshop") }
-                        Chip { visible: !!item.modelData.title && item.modelData.installed; tone: Theme.ok; icon: "check"; text: Theme.say("Installed") }
-                        Btn { visible: !!item.modelData.title && !item.modelData.installed; icon: "external-link"; text: Theme.say("Workshop page"); onClicked: Theme.openWorkshop(item.modelData.id) }
-                    }
-                }
-            }
-
-            Card {
                 visible: replaced.count > 0 || screen.ignoredReplacements > 0
                 title: Theme.say("Replacements suggested")
                 note: Theme.fill("{}, from the Use This Instead list", replaced.count)
@@ -528,7 +530,7 @@ Item {
                             RowLayout {
                                 width: parent.width
                                 spacing: Theme.gap
-                                Icon { name: "corner-down-right"; size: Theme.icon; color: Theme.ink3 }
+                                Icon { name: "corner-down-right"; color: Theme.ink3 }
                                 Text { Layout.maximumWidth: parent.width - Theme.icon - Theme.gap - (hasNew.visible ? hasNew.width + Theme.gap : 0); elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; font.weight: Font.Medium; text: old.modelData.newName }
                                 Chip { id: hasNew; visible: old.modelData.haveNew; tone: Theme.ok; icon: "check"; text: Theme.say("installed") }
                                 Item { Layout.fillWidth: true }

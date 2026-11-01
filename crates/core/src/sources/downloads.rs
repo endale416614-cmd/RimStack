@@ -163,15 +163,26 @@ pub fn repositories(pasted: &str, local_mods: Option<&std::path::Path>) -> Vec<R
         let into = local_mods.map(|mods| crate::sources::git::folder_for(&link, mods));
         Repository {
             name: link.split('/').skip(3).collect::<Vec<_>>().join("/"),
-            installed: into.as_ref().is_some_and(|folder| folder.exists()),
+            installed: false,
             into: into.map(|folder| folder.to_string_lossy().into_owned()),
             link,
         }
     };
-    crate::sources::git::links_in(pasted)
+    let mut found: Vec<Repository> = crate::sources::git::links_in(pasted)
         .into_iter()
         .map(one)
-        .collect()
+        .collect();
+    recheck(&mut found);
+    found
+}
+
+pub fn recheck(repositories: &mut [Repository]) {
+    for repository in repositories {
+        repository.installed = repository
+            .into
+            .as_ref()
+            .is_some_and(|folder| std::path::Path::new(folder).exists());
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -253,6 +264,10 @@ mod tests {
             ("ann/Hats", false)
         );
         assert!(found[1].into.as_deref().unwrap().ends_with("Hats"));
+        let mut cloned = found.clone();
+        std::fs::create_dir(tmp.path().join("Hats")).unwrap();
+        recheck(&mut cloned);
+        assert!(cloned[1].installed, "a clone since the look-up is seen");
         let unknown = repositories(pasted, None);
         assert_eq!(
             (unknown[0].into.as_deref(), unknown[0].installed),

@@ -147,6 +147,30 @@ fn content_folders_are_found_one_level_down() {
 }
 
 #[test]
+fn content_folders_are_found_at_any_depth_but_not_in_its_source() {
+    let dir = tempfile::tempdir().unwrap();
+    for file in [
+        "1.7/Base/Assemblies/Declutter UI.dll",
+        "1.7/Base/Defs/d.xml",
+        "Textures/UI/icon.png",
+        "Source/Patches/p.xml",
+    ] {
+        let path = dir.path().join("mod").join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, "").unwrap();
+    }
+    add_mod(dir.path(), "mod", &about("t.t", "T", &[]), &[]);
+    let roots = [ModRoot {
+        path: dir.path().to_path_buf(),
+        source: Source::Local,
+    }];
+    let found = &scan(&roots)[0];
+    let k = found.kinds;
+    assert!(k.assemblies && k.defs && k.textures && !k.patches);
+    assert_eq!(found.assemblies(), ["declutter ui"]);
+}
+
+#[test]
 fn active_ids_resolve_in_order_whatever_their_case() {
     let (_tmp, roots) = sample();
     let mods = scan(&roots);

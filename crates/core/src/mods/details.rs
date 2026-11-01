@@ -52,10 +52,10 @@ pub struct Neighbours {
 }
 
 fn said_by(rule: &Rule, at: usize) -> Sentence {
-    match (rule.broken(), rule.kind, rule.declared_by()) {
+    match (rule.troubled(), rule.kind, rule.declared_by()) {
         (true, ..) => say!("out of order"),
         (_, Kind::Yours, _) => say!("your rule"),
-        (_, Kind::Inferred, _) => say!("detected from files"),
+        (_, Kind::Inferred | Kind::Hint, _) => say!("detected from files"),
         (_, _, None) => say!("community rule"),
         (_, Kind::Requires, Some(by)) if by == at => say!("required"),
         (_, Kind::Requires, _) => say!("requires this mod"),
@@ -83,7 +83,7 @@ pub fn neighbours(rules: &[Rule], at: usize, mods: &[Mod]) -> Neighbours {
         lines.push(Named {
             name: mods[other].name.clone(),
             note: said_by(rule, at),
-            trouble: rule.broken(),
+            trouble: rule.troubled(),
             mod_id: mods[other].installed,
         });
     }
@@ -215,6 +215,9 @@ mod tests {
             patched: Default::default(),
             sub: String::new(),
             load_micros: None,
+            filed: Category::Content,
+            chosen: false,
+            held_by: String::new(),
         };
         names.iter().enumerate().map(one).collect()
     }
@@ -254,6 +257,14 @@ mod tests {
         assert!(found.bottom);
         assert_eq!(found.after[0].mod_id, Some(ModId::new(0, 11)));
         assert!(!neighbours(&rules, 1, &mods).bottom);
+    }
+
+    #[test]
+    fn a_hint_out_of_order_is_no_trouble() {
+        let mods = mods(&["Core", "Lib"]);
+        let found = neighbours(&[rule(1, 0, Kind::Hint)], 0, &mods);
+        assert_eq!(found.after[0].note.to_string(), "detected from files");
+        assert!(!found.after[0].trouble);
     }
 
     #[test]

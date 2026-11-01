@@ -64,7 +64,7 @@ Popup {
         ListView {
             id: list
             width: parent.width
-            height: Math.min(contentHeight, 390)
+            height: Math.min(contentHeight, Theme.sized(390))
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             Wheel {}

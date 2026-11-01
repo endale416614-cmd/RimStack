@@ -55,8 +55,12 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: ilammy/msvc-dev-cmd@v1
-      - name: Inno Setup, for the installer
-        run: choco install innosetup --no-progress -y
+      - name: Inno Setup, for the installer, when the runner lacks it
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
       - name: The signing certificate, when there is one
         if: env.SIGNED == 'true'
         env:

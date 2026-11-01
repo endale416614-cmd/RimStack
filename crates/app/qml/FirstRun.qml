@@ -26,7 +26,7 @@ Rectangle {
         default property alias lines: inside.data
         width: parent.width
         topPadding: Theme.gapWide
-        Text { x: 12; bottomPadding: Theme.gapSmall; color: Theme.ink2; font.pixelSize: Theme.small; font.weight: Font.DemiBold; text: block.title }
+        Text { x: Theme.gapLarge; bottomPadding: Theme.gapSmall; color: Theme.ink2; font.pixelSize: Theme.small; font.weight: Font.DemiBold; text: block.title }
         Rectangle {
             width: parent.width
             height: inside.implicitHeight
@@ -45,7 +45,7 @@ Rectangle {
         property bool sentence: false
         property bool note: false
         width: parent.width
-        height: Math.max(36, said.implicitHeight + 14)
+        height: Math.max(Theme.sized(36), said.implicitHeight + 2 * Theme.gapSmall)
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: Theme.gapLarge
@@ -67,15 +67,15 @@ Rectangle {
         property bool last: false
         signal toggled()
         width: parent.width
-        height: Math.max(36, said.implicitHeight + 14)
+        height: Math.max(Theme.sized(36), said.implicitHeight + 2 * Theme.gapSmall)
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: Theme.gapLarge
             anchors.rightMargin: Theme.gapLarge
             spacing: Theme.gap
             Rectangle {
-                implicitWidth: 15
-                implicitHeight: 15
+                implicitWidth: Theme.sized(15)
+                implicitHeight: implicitWidth
                 radius: 3
                 color: choice.on ? Theme.accent : Theme.well
                 border.width: 1
@@ -110,9 +110,10 @@ Rectangle {
         property bool last: false
         default property alias control: held.data
         width: parent.width
-        height: Math.max(44, held.implicitHeight + 16, named.implicitHeight + 16)
-        Text { id: named; x: 12; width: Theme.sized(190); anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.body; text: pick.what }
-        Flow { id: held; anchors.left: named.right; anchors.leftMargin: 12; anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; spacing: Theme.gapSmall }
+        height: Math.max(Theme.sized(44), held.implicitHeight + 2 * Theme.gap, named.implicitHeight + 2 * Theme.gap)
+        TextMetrics { id: measure; font.pixelSize: Theme.body; text: pick.what }
+        Text { id: named; x: Theme.gapLarge; width: Math.min(Math.max(Theme.sized(190), measure.advanceWidth), pick.width / 2); anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.body; text: pick.what }
+        Flow { id: held; anchors.left: named.right; anchors.leftMargin: Theme.gapLarge; anchors.right: parent.right; anchors.rightMargin: Theme.gapLarge; anchors.verticalCenter: parent.verticalCenter; spacing: Theme.gapSmall }
         Rectangle { visible: !pick.last; anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
     }
 
@@ -124,18 +125,17 @@ Rectangle {
 
     RowLayout {
         anchors.centerIn: parent
-        width: Math.min(Theme.sized(940), parent.width - 80)
-        height: Math.min(Theme.sized(580), parent.height - 40)
+        width: Math.min(Theme.sized(940), parent.width - 4 * Theme.gapPage)
+        height: Math.min(Theme.sized(580), parent.height - 2 * Theme.gapPage)
         spacing: Theme.gapWide * 3
 
         Column {
             Layout.alignment: Qt.AlignTop
-            Layout.preferredWidth: Theme.sized(250)
             spacing: Theme.gapSmall
-            Image { width: 112; height: 112; sourceSize.width: 224; sourceSize.height: 224; source: "qrc:/qt/qml/RimStack/Ui/assets/rimstack.svg" }
+            Image { width: Theme.sized(112); height: width; sourceSize.width: 2 * width; sourceSize.height: 2 * height; source: "qrc:/qt/qml/RimStack/Ui/assets/rimstack.svg" }
             Text { topPadding: Theme.gap; color: Theme.brand; font.pixelSize: Theme.display; font.weight: Font.DemiBold; text: Theme.say("RimStack") }
             Text { color: Theme.ink; font.pixelSize: Theme.title; text: Theme.say("A mod manager for RimWorld") }
-            Item { width: 1; height: 18 }
+            Item { width: 1; height: Theme.gapPage }
             Repeater {
                 model: page.steps
                 Row {
@@ -274,12 +274,12 @@ Rectangle {
                 title: Theme.say("As it will look")
                 Item {
                     width: parent.width
-                    height: glance.height + 16
+                    height: glance.height + 2 * Theme.gap
                     Column {
                         id: glance
-                        x: 8
-                        y: 8
-                        width: parent.width - 16
+                        x: Theme.gap
+                        y: Theme.gap
+                        width: parent.width - 2 * Theme.gap
                         Repeater {
                             model: page.info.official
                             Rectangle {
@@ -305,7 +305,7 @@ Rectangle {
                                         radius: Theme.corner
                                         color: Theme.ctl
                                         clip: true
-                                        Image { anchors.fill: parent; anchors.margins: Theme.gapLine; visible: status === Image.Ready; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 192; source: sample.modelData.picture ? Theme.fileUrl(sample.modelData.picture) : "" }
+                                        Image { anchors.fill: parent; anchors.margins: Theme.gapLine; visible: status === Image.Ready; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 3 * width; source: sample.modelData.picture ? Theme.fileUrl(sample.modelData.picture) : "" }
                                     }
                                     Text { Layout.fillWidth: true; elide: Text.ElideRight; color: sample.chosen ? Theme.onSelected : Theme.ink; font.pixelSize: Theme.body; text: sample.modelData.name }
                                     Text { color: sample.chosen ? Theme.onSelectedDim : Theme.ink2; font.pixelSize: Theme.body; text: sample.modelData.author }

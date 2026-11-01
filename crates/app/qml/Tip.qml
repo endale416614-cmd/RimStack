@@ -39,7 +39,8 @@ Item {
             delay: 0
             timeout: 15000
             padding: Theme.gap
-            contentWidth: Math.min(words.implicitWidth, 340)
+            margins: Theme.gap
+            contentWidth: Math.min(words.implicitWidth, Theme.sized(340))
             contentItem: Text { id: words; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.small; lineHeight: 1.25; text: tip.text }
             background: Rectangle { radius: Theme.corner; color: Theme.bar; border.width: 1; border.color: Theme.line }
         }

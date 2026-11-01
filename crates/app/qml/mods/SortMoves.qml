@@ -36,7 +36,7 @@ Column {
                     readonly property bool up: modelData.to < modelData.from
                     readonly property bool chosen: modelData.modId === Mods.selectedId
                     width: moves.width
-                    height: Math.max(Theme.sized(40), said.implicitHeight + 10)
+                    height: Math.max(Theme.sized(40), said.implicitHeight + Theme.gapMedium)
                     radius: Theme.corner
                     color: chosen ? Theme.seg : hovering.hovered ? Theme.chip : "transparent"
                     Accessible.role: Accessible.Button
@@ -46,7 +46,7 @@ Column {
                         anchors.leftMargin: Theme.gapSmall
                         anchors.rightMargin: Theme.gapSmall
                         spacing: Theme.gap
-                        Icon { name: move.up ? "arrow-up" : "arrow-down"; size: 13; color: Theme.moved }
+                        Icon { name: move.up ? "arrow-up" : "arrow-down"; size: Theme.sized(13); color: Theme.moved }
                         Column {
                             id: said
                             Layout.fillWidth: true
@@ -67,5 +67,5 @@ Column {
             }
         }
     }
-    Item { width: 1; height: 14 }
+    Item { width: 1; height: Theme.gapCard }
 }

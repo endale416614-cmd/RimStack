@@ -59,7 +59,7 @@ Column {
             spacing: Theme.gap
             Rectangle { implicitWidth: 7; implicitHeight: 7; radius: 3.5; color: one.modelData.colour }
             Text { Layout.fillWidth: true; elide: Text.ElideMiddle; color: Theme.ink; font.pixelSize: Theme.body; text: one.modelData.name }
-            Icon { visible: one.modelData.trouble > 0; name: one.modelData.trouble === 2 ? "circle-alert" : "triangle-alert"; size: 12; color: one.modelData.trouble === 2 ? Theme.err : Theme.ink3 }
+            Icon { visible: one.modelData.trouble > 0; name: one.modelData.trouble === 2 ? "circle-alert" : "triangle-alert"; size: Theme.sized(12); color: one.modelData.trouble === 2 ? Theme.err : Theme.ink3 }
             Text { visible: text !== ""; color: Theme.ink3; font.pixelSize: Theme.small; font.features: { "tnum": 1 }; text: one.modelData.load }
         }
     }

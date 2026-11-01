@@ -4,7 +4,7 @@ use super::{LoadOrder, Side, side_index};
 use crate::App;
 use rimstack_core::base::sentence::Sentence;
 use rimstack_core::mods::describe::{Fix, Trouble};
-use rimstack_core::mods::library::{Library, ModId};
+use rimstack_core::mods::library::{Installed, Library, ModId};
 use rimstack_core::mods::list::{Category, Mod, Row};
 use rimstack_core::rimworld::paths::Source;
 use rimstack_core::say;
@@ -14,8 +14,10 @@ use std::collections::HashMap;
 pub enum RowKey {
     Header(Category, usize),
     Sub(Category, String, usize),
-    /// A mod: installed, by its id; otherwise by its package id.
-    Mod(Option<ModId>, String, usize),
+    /// By its folder, the same over a rescan, which gives every mod a new `ModId`.
+    Installed(std::path::PathBuf, usize),
+    /// By its package id.
+    Missing(String, usize),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,8 +97,14 @@ impl RowView {
     }
 }
 
-fn source_of(library: Option<&Library>, m: &Mod) -> (i32, String, bool) {
-    let installed = library.zip(m.installed).and_then(|(l, i)| l.get(i));
+fn key_of(installed: Option<&Installed>, m: &Mod, nth: &mut impl FnMut(RowKey) -> usize) -> RowKey {
+    match installed {
+        Some(i) => RowKey::Installed(i.path.clone(), nth(RowKey::Installed(i.path.clone(), 0))),
+        None => RowKey::Missing(m.id.clone(), nth(RowKey::Missing(m.id.clone(), 0))),
+    }
+}
+
+fn source_of(installed: Option<&Installed>) -> (i32, String) {
     let source = installed.map_or(0, |i| match i.source {
         Source::Official => 3,
         Source::Local if i.git => 2,
@@ -105,20 +113,14 @@ fn source_of(library: Option<&Library>, m: &Mod) -> (i32, String, bool) {
     });
     let picture = installed.and_then(|i| i.preview.as_ref());
     let picture = picture.map_or(String::new(), |p| p.to_string_lossy().into_owned());
-    (source, picture, installed.is_some())
+    (source, picture)
 }
 
 impl LoadOrder {
     pub fn rows(&self, app: &App, side: Side) -> Vec<RowView> {
-        let loaded = self.installed.then(|| app.library());
-        let library = loaded
-            .as_ref()
-            .and_then(|l| l.as_ref().as_ref().ok())
-            .map(|(l, _)| l);
-        let fresh: std::collections::HashSet<ModId> = match self.installed {
-            true => self.fresh(app, side).into_iter().collect(),
-            false => Default::default(),
-        };
+        let loaded = self.reading(app);
+        let library = loaded.as_ref().as_ref().ok().map(|(l, _)| l);
+        let fresh: std::collections::HashSet<ModId> = self.fresh(app, side).into_iter().collect();
         let list = self.list(side);
         let mods = list.mods();
         let mut seen: HashMap<RowKey, usize> = HashMap::new();
@@ -188,7 +190,8 @@ impl LoadOrder {
                 .unwrap_or_default(),
             Side::Inactive => &[],
         };
-        let (source, picture, _) = source_of(library, m);
+        let installed = library.zip(m.installed).and_then(|(l, i)| l.get(i));
+        let (source, picture) = source_of(installed);
         let took = m.load_micros.filter(|micros| *micros >= 1000);
         let load_time = took
             .map(|micros| rimstack_core::rimworld::startup::seconds(f64::from(micros) / 1000.0));
@@ -206,11 +209,7 @@ impl LoadOrder {
             .and_then(Option::as_ref);
         let preview = side == Side::Active;
         RowView {
-            key: RowKey::Mod(
-                m.installed,
-                m.id.clone(),
-                nth(RowKey::Mod(m.installed, m.id.clone(), 0)),
-            ),
+            key: key_of(installed, m, nth),
             is_header: false,
             is_sub: false,
             again: false,

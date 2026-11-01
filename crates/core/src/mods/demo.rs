@@ -56,6 +56,9 @@ pub fn generate(count: usize) -> Vec<Mod> {
                 patched: Default::default(),
                 sub: String::new(),
                 load_micros: None,
+                filed: category,
+                chosen: false,
+                held_by: String::new(),
                 name: format!(
                     "{} {} {}",
                     FIRST[i % FIRST.len()],

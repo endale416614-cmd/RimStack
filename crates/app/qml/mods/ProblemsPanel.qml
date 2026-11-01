@@ -66,10 +66,10 @@ Column {
                     width: group.width
                     height: Theme.control
                     Rectangle { anchors.fill: parent; radius: Theme.corner; color: Theme.hover; opacity: over.hovered ? 0.05 : 0 }
-                    Text { x: 6; width: parent.width - 80; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: named.modelData.name }
+                    Text { x: Theme.gapSmall; width: ignoreBtn.x - 2 * Theme.gapSmall; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: named.modelData.name }
                     HoverHandler { id: over; cursorShape: Qt.PointingHandCursor }
                     TapHandler { onTapped: Mods.showMod(named.modelData.modId) }
-                    Btn { visible: over.hovered; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: Theme.say("Ignore"); tip: Theme.say("No warning about the game version for this mod"); onClicked: Mods.applyFix(named.modelData.modId, named.modelData.fix) }
+                    Btn { id: ignoreBtn; visible: over.hovered; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: Theme.say("Ignore"); tip: Theme.say("No warning about the game version for this mod"); onClicked: Mods.applyFix(named.modelData.modId, named.modelData.fix) }
                 }
             }
             Repeater {

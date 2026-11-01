@@ -11,9 +11,9 @@ Rectangle {
     signal closed()
     color: Theme.win
     Column {
-        x: 16
-        y: 14
-        width: Math.min(parent.width - 32, Theme.sized(620))
+        x: Theme.gapWide
+        y: Theme.gapCard
+        width: Math.min(parent.width - 2 * Theme.gapWide, Theme.sized(620))
         spacing: Theme.gapSmall
         Row {
             spacing: Theme.gap

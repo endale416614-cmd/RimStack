@@ -10,7 +10,8 @@ Rectangle {
     property string found
     property string icon
     property string keys
-    readonly property real lead: icon !== "" ? Theme.icon + 8 : 0
+    readonly property real lead: icon !== "" ? Theme.icon + Theme.gap : 0
+    readonly property real inset: clear.visible ? clear.width + 2 * Theme.gap : Theme.gapMedium
     property var terms: []
     readonly property string typing: fieldInput.text
     readonly property string partial: typing.split(" ").pop()
@@ -30,6 +31,7 @@ Rectangle {
     property bool syncing: false
     signal accepted()
     signal escaped()
+    signal tapped()
     function focusInput() { fieldInput.forceActiveFocus() }
     readonly property bool editing: fieldInput.activeFocus
 
@@ -64,7 +66,7 @@ Rectangle {
     Behavior on border.color { ColorAnimation { duration: Theme.quick } }
     Row {
         id: shown
-        x: 6 + field.lead
+        x: Theme.gapSmall + field.lead
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.gapTiny
         Repeater {
@@ -85,7 +87,7 @@ Rectangle {
         id: foundText
         visible: field.found !== ""
         anchors.right: parent.right
-        anchors.rightMargin: clear.visible ? 30 : 10
+        anchors.rightMargin: field.inset
         anchors.verticalCenter: parent.verticalCenter
         color: Theme.ink2
         font.pixelSize: Theme.small
@@ -93,6 +95,7 @@ Rectangle {
         text: field.found
     }
     Text {
+        id: placeholderText
         anchors.fill: fieldInput
         verticalAlignment: Text.AlignVCenter
         visible: fieldInput.text === "" && field.terms.length === 0
@@ -107,8 +110,8 @@ Rectangle {
         Accessible.role: Accessible.EditableText
         Accessible.name: field.placeholder
         anchors.fill: parent
-        anchors.leftMargin: field.lead + (field.terms.length > 0 ? shown.width + 12 : 10)
-        anchors.rightMargin: (clear.visible ? 26 : 10) + (foundText.visible ? foundText.width + 8 : 0)
+        anchors.leftMargin: field.lead + (field.terms.length > 0 ? shown.width + Theme.gapLarge : Theme.gapMedium)
+        anchors.rightMargin: foundText.visible ? field.width - foundText.x + Theme.gap : field.inset
         verticalAlignment: TextInput.AlignVCenter
         color: Theme.ink
         selectionColor: Theme.accent
@@ -131,6 +134,7 @@ Rectangle {
             field.text = ""
             field.escaped()
         }
+        TapHandler { onTapped: field.tapped() }
         Keys.onReturnPressed: field.accepted()
         Keys.onEnterPressed: field.accepted()
         Keys.onPressed: event => {
@@ -140,9 +144,10 @@ Rectangle {
             }
         }
     }
-    Icon { visible: field.icon !== ""; x: 9; anchors.verticalCenter: parent.verticalCenter; name: field.icon; size: Theme.icon - 1; color: Theme.ink3 }
+    Icon { visible: field.icon !== ""; x: Theme.gap; anchors.verticalCenter: parent.verticalCenter; name: field.icon; size: Theme.icon - 1; color: Theme.ink3 }
     Text {
-        visible: field.keys !== "" && field.text === "" && !fieldInput.activeFocus && field.width > Theme.sized(300)
+        id: keysText
+        visible: field.keys !== "" && field.text === "" && !fieldInput.activeFocus && field.width > field.lead + placeholderText.implicitWidth + keysText.implicitWidth + 4 * Theme.gap
         anchors.right: parent.right
         anchors.rightMargin: Theme.gap
         anchors.verticalCenter: parent.verticalCenter
@@ -157,7 +162,7 @@ Rectangle {
         anchors.rightMargin: Theme.gap
         anchors.verticalCenter: parent.verticalCenter
         name: "x"
-        size: 12
+        size: Theme.sized(12)
         color: clearHover.hovered ? Theme.ink : Theme.ink3
         HoverHandler { id: clearHover; cursorShape: Qt.PointingHandCursor }
         TapHandler { onTapped: { field.text = ""; fieldInput.forceActiveFocus() } }

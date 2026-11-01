@@ -186,7 +186,7 @@ pub struct Inferred {
     pub first: usize,
     pub then: usize,
     pub why: Sentence,
-    /// From compiled code, the game needs this order; from patches and defs, only a tidy order.
+    /// From compiled code or a parent def, the game needs this order; from patches, only a tidy order.
     pub code: bool,
 }
 
@@ -260,6 +260,17 @@ pub fn infer(
                 add(other, me, say!("{} patches its code", shown(dll, me)), true);
             }
         }
+        // The game only takes a parent from the def's own mod or an earlier one.
+        for (parent, file) in &s.parents {
+            if let Some(other) = only(base_of.get(parent.as_str()), me) {
+                add(
+                    other,
+                    me,
+                    say!("{} builds on its {}", shown(file, me), parent),
+                    true,
+                );
+            }
+        }
         for (asked, file) in &s.asks_for {
             if let Some(&other) = by_name
                 .get(&asked.to_lowercase())
@@ -279,16 +290,6 @@ pub fn infer(
                     other,
                     me,
                     say!("{} patches its {}", shown(file, me), def),
-                    false,
-                );
-            }
-        }
-        for (parent, file) in &s.parents {
-            if let Some(other) = only(base_of.get(parent.as_str()), me) {
-                add(
-                    other,
-                    me,
-                    say!("{} builds on its {}", shown(file, me), parent),
                     false,
                 );
             }
@@ -396,10 +397,10 @@ mod tests {
         assert_eq!(pairs, [(0, 1), (0, 2)]);
         assert_eq!(
             found[0].why.to_string(),
-            "Patches/p.xml patches its Big_Bed"
+            "Patches/p.xml builds on its BedBase"
         );
         assert_eq!(found[1].why.to_string(), "Patches/p.xml has patches for it");
-        assert!(found.iter().all(|r| !r.code));
+        assert!(found[0].code && !found[1].code);
     }
 
     #[test]

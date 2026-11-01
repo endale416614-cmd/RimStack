@@ -435,6 +435,10 @@ impl qobject::ModsData {
                     .trust(&crate::qml::values::to_qml(&[mod_id]), true);
                 true
             }
+            "sort" => {
+                self.preview_sort();
+                true
+            }
             _ => false,
         }
     }

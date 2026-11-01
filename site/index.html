@@ -134,6 +134,10 @@ header.top nav a.nav-guide:hover { color: var(--accent-ink); }
 .cards b { display: block; color: var(--warm); margin-bottom: 4px; }
 .cards span { color: var(--ink2); font-size: 0.95rem; }
 .panel td:first-child { white-space: nowrap; font-weight: 400; }
+.support { margin: 18px 0 0; color: var(--ink2); }
+.support span { display: block; font-size: 0.95rem; margin-bottom: 4px; }
+.btn.small { padding: 8px 16px; font-size: 0.95rem; }
+.support .btn svg { width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin-right: 8px; }
 footer { margin: 72px 0 40px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--ink2); font-size: 0.92rem; }
 </style>
 </head>
@@ -145,6 +149,7 @@ footer { margin: 72px 0 40px; padding-top: 22px; border-top: 1px solid var(--lin
     <ul class="top-links">
       <li><a href="#features">Features</a></li>
       <li><a href="#live">Live, always</a></li>
+      <li><a href="#support">Support</a></li>
     </ul>
     <p>Guide</p>
       <ul class="tree">
@@ -231,6 +236,7 @@ footer { margin: 72px 0 40px; padding-top: 22px; border-top: 1px solid var(--lin
       <a href="#features">Features</a>
       <a class="nav-guide" href="#guide">Guide</a>
       <a href="#install">Install</a>
+      <a href="#support">Support</a>
       <a href="https://github.com/TheForgotten69/RimStack">GitHub</a>
     </nav>
   </header>
@@ -241,6 +247,12 @@ footer { margin: 72px 0 40px; padding-top: 22px; border-top: 1px solid var(--lin
     <a class="btn primary" href="https://github.com/TheForgotten69/RimStack/releases">Download</a>
     <a class="btn plain" href="#guide">Read the guide</a>
     <a class="btn plain" href="https://github.com/TheForgotten69/RimStack">View on GitHub</a>
+    <div id="support" class="support">
+      <span>Free and open source. Support it on</span>
+      <a class="btn plain small" href="https://github.com/sponsors/TheForgotten69"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#ea4aaa" d="M12 21C5 16.5 2 12.6 2 8.9 2 6 4.2 4 6.9 4c2 0 3.6 1.1 5.1 3 1.5-1.9 3.1-3 5.1-3C19.8 4 22 6 22 8.9c0 3.7-3 7.6-10 12.1z"/></svg>GitHub Sponsors</a>
+      <a class="btn plain small" href="https://ko-fi.com/theforgotten69"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#ff5e5b" d="M2 6h15v7a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5z"/><path fill="none" stroke="#ff5e5b" stroke-width="2" d="M17 8.5h1.5a2.5 2.5 0 0 1 0 5H17"/></svg>Ko-fi</a>
+      <a class="btn plain small" href="https://www.patreon.com/theforgotten69"><svg viewBox="0 0 24 24" aria-hidden="true"><circle fill="#f96854" cx="15" cy="9.5" r="6.5"/><rect fill="#f96854" x="2.5" y="3" width="3.5" height="18"/></svg>Patreon</a>
+    </div>
     <div class="stats">
       <div><b>0.2 s</b><span>RimStack to your mod list</span></div>
       <div><b>7.0 s</b><span>RimSort 1.15.0, same install</span></div>
@@ -623,7 +635,7 @@ footer { margin: 72px 0 40px; padding-top: 22px; border-top: 1px solid var(--lin
         <thead><tr><th>System</th><th>File</th></tr></thead>
         <tbody>
           <tr><td>Windows</td><td>Installer (<code>-setup.exe</code>) or zip</td></tr>
-          <tr><td>macOS</td><td>dmg, Apple silicon only</td></tr>
+          <tr><td>macOS</td><td>dmg, Apple silicon and Intel</td></tr>
           <tr><td>Linux</td><td>AppImage</td></tr>
           <tr><td>Arch (AUR)</td><td>Coming soon</td></tr>
         </tbody>
@@ -643,6 +655,7 @@ footer { margin: 72px 0 40px; padding-top: 22px; border-top: 1px solid var(--lin
   <footer>
     RimStack is free software under the GPL-3.0-or-later.
     <a href="#guide">Guide</a> ·
+    <a href="#support">Support</a> ·
     <a href="https://github.com/TheForgotten69/RimStack">Source</a> ·
     <a href="https://github.com/TheForgotten69/RimStack/issues">Issues</a>
   </footer>

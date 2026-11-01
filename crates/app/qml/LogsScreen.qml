@@ -65,9 +65,9 @@ Item {
         property bool current: false
         property bool choosable: true
         signal chosen()
-        readonly property bool stacked: entryChip.visible && entryTitle.implicitWidth + entryChip.implicitWidth + 36 + 14 + Theme.gap > width
+        readonly property bool stacked: entryChip.visible && entryTitle.implicitWidth + entryGrid.columnSpacing + entryChip.implicitWidth > entryGrid.width
         width: parent ? parent.width : 0
-        implicitHeight: Theme.sized(34) + (stacked ? Theme.tag + Theme.gapTiny : 0) + (entryTitle.lineCount - 1) * entryTitle.font.pixelSize * 1.3
+        implicitHeight: Math.max(Theme.sized(34), entryGrid.implicitHeight + 2 * Theme.gapSmall)
         height: implicitHeight
         Accessible.ignored: !visible
         Accessible.role: Accessible.ListItem
@@ -83,9 +83,10 @@ Item {
         }
         HoverHandler { id: entryHover }
         TapHandler { enabled: entry.choosable; onTapped: entry.chosen() }
-        Rectangle { x: 21; width: 1; height: parent.height; color: entry.current ? Theme.onSelectedDim : Theme.line }
+        Rectangle { x: entryDot.x + Theme.gapTiny; width: 1; height: parent.height; color: entry.current ? Theme.onSelectedDim : Theme.line }
         Rectangle {
-            x: 17
+            id: entryDot
+            x: Theme.gapWide + Theme.gapLine
             anchors.verticalCenter: parent.verticalCenter
             width: 9
             height: 9
@@ -95,14 +96,15 @@ Item {
             border.color: entry.current ? Theme.accent : Theme.panel
         }
         GridLayout {
+            id: entryGrid
             anchors.fill: parent
-            anchors.leftMargin: 36
+            anchors.leftMargin: entryDot.x + entryDot.width + Theme.gapMedium
             anchors.rightMargin: Theme.gapCard
             columns: entry.stacked ? 1 : 2
             columnSpacing: Theme.gap
             rowSpacing: Theme.gapTiny
             Text { id: entryTitle; Layout.fillWidth: true; Layout.alignment: entry.stacked ? Qt.AlignBottom : Qt.AlignVCenter; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight; color: entry.current ? Theme.onSelected : entry.choosable ? Theme.ink : Theme.ink2; font.pixelSize: Theme.body; text: entry.title }
-            Chip { id: entryChip; Layout.alignment: entry.stacked ? Qt.AlignTop : Qt.AlignVCenter; visible: entry.outcome !== ""; maxWidth: entry.width - 50; onAccent: entry.current; tone: entry.bad ? Theme.err : entry.clean ? Theme.ok : Theme.ink3; text: entry.outcome; tip: entry.outcomeTip }
+            Chip { id: entryChip; Layout.alignment: entry.stacked ? Qt.AlignTop : Qt.AlignVCenter; visible: entry.outcome !== ""; maxWidth: entryGrid.width; onAccent: entry.current; tone: entry.bad ? Theme.err : entry.clean ? Theme.ok : Theme.ink3; text: entry.outcome; tip: entry.outcomeTip }
         }
     }
 
@@ -219,15 +221,19 @@ Item {
         }
 
         ColumnLayout {
+            id: middle
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
+            Layout.preferredWidth: 0
             spacing: 0
+            clip: true
 
             GridLayout {
                 id: head
-                readonly property bool tight: width < Theme.sized(560)
-                readonly property bool wrapped: width < written.implicitWidth + controls.implicitWidth + Theme.gapWide
+                readonly property real room: middle.width - Layout.leftMargin - Layout.rightMargin
+                readonly property bool tight: room < openFile.fullWidth + copyPath.fullWidth + findBroken.fullWidth + viewChoice.implicitWidth + 3 * controls.spacing
+                readonly property bool wrapped: room < written.implicitWidth + controls.implicitWidth + Theme.gapWide
                 columns: wrapped ? 1 : 2
                 Layout.fillWidth: true
                 Layout.leftMargin: Theme.gapCard
@@ -246,9 +252,10 @@ Item {
                 RowLayout {
                 id: controls
                 spacing: Theme.gap
-                Btn { icon: "external-link"; text: Theme.say("Open file"); tip: screen.facts.path || ""; enabled: !!screen.facts.path; onClicked: Qt.openUrlExternally(Theme.fileUrl(screen.facts.path)) }
-                Btn { icon: "copy"; text: Theme.say("Copy path"); enabled: !!screen.facts.path; onClicked: Theme.copy(screen.facts.path) }
+                Btn { id: openFile; compact: head.tight; icon: "external-link"; text: Theme.say("Open file"); tip: screen.facts.path || ""; enabled: !!screen.facts.path; onClicked: Qt.openUrlExternally(Theme.fileUrl(screen.facts.path)) }
+                Btn { id: copyPath; compact: head.tight; icon: "copy"; text: Theme.say("Copy path"); enabled: !!screen.facts.path; onClicked: Theme.copy(screen.facts.path) }
                 Btn {
+                    id: findBroken
                     visible: !Theme.demo && !Hub.search.active
                     icon: "search"
                     compact: head.tight
@@ -256,7 +263,7 @@ Item {
                     tip: Theme.say("Find the broken mod") + ". " + Theme.say("Switches half of the mods off, you play and say whether it still breaks, until one mod is left. Your list is kept and comes back at the end.")
                     onClicked: screen.findBroken()
                 }
-                Choice { title: Theme.say("View"); options: ["Errors", "Mods", "Log"]; current: screen.view; onPicked: (index) => screen.view = index }
+                Choice { id: viewChoice; title: Theme.say("View"); options: ["Errors", "Mods", "Log"]; current: screen.view; onPicked: (index) => screen.view = index }
                 }
             }
 
@@ -269,7 +276,7 @@ Item {
                 Layout.leftMargin: Theme.gapLarge
                 Layout.rightMargin: Theme.gapLarge
                 Layout.bottomMargin: Theme.gap
-                implicitHeight: sinceText.implicitHeight + 20
+                implicitHeight: sinceText.implicitHeight + 2 * Theme.gapMedium
                 radius: Theme.cornerLarge
                 color: Theme.panel
                 RowLayout {
@@ -390,10 +397,11 @@ Item {
                     width: logView.width
                     height: Math.max(Theme.sized(20), lineText.implicitHeight + 4)
                     Rectangle { visible: logLine.modelData.number === logView.marked; anchors.fill: parent; color: Theme.accent; opacity: 0.25 }
-                    Text { x: 8; width: Theme.sized(52); horizontalAlignment: Text.AlignRight; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink3; font.family: "monospace"; font.pixelSize: Theme.small; text: logLine.modelData.number }
+                    Text { id: lineNumber; x: Theme.gap; width: Theme.sized(52); horizontalAlignment: Text.AlignRight; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink3; font.family: "monospace"; font.pixelSize: Theme.small; text: logLine.modelData.number }
                     Rectangle {
+                        id: lineMark
                         visible: logLine.bad || logLine.modelData.warning
-                        x: 66
+                        x: lineNumber.x + lineNumber.width + Theme.gapSmall
                         anchors.verticalCenter: parent.verticalCenter
                         width: Theme.sized(16)
                         height: Theme.sized(16)
@@ -403,8 +411,8 @@ Item {
                     }
                     Text {
                         id: lineText
-                        x: 90
-                        width: parent.width - 108
+                        x: lineMark.x + lineMark.width + Theme.gap
+                        width: parent.width - x - Theme.gapWide
                         anchors.verticalCenter: parent.verticalCenter
                         elide: Theme.stored.wrapLog ? Text.ElideNone : Text.ElideRight
                         wrapMode: Theme.stored.wrapLog ? Text.WrapAnywhere : Text.NoWrap
@@ -471,17 +479,17 @@ Item {
                         color: row.current ? Theme.accent : Theme.hover
                         opacity: row.current ? 1 : rowHover.hovered ? 0.05 : 0
                     }
-                    Rectangle { visible: !row.current; anchors.bottom: parent.bottom; anchors.bottomMargin: -1; x: 22; width: parent.width - 48; height: 1; color: Theme.line; opacity: 0.6 }
+                    Rectangle { visible: !row.current; anchors.bottom: parent.bottom; anchors.bottomMargin: -1; x: Theme.gapPage; width: parent.width - 2 * Theme.gapPage; height: 1; color: Theme.line; opacity: 0.6 }
                     HoverHandler { id: rowHover }
                     TapHandler { onTapped: screen.selected = row.index }
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: Theme.gapPage
-                        anchors.rightMargin: 26
+                        anchors.rightMargin: Theme.gapPage + Theme.gapSmall
                         spacing: Theme.gapLarge
                         Rectangle {
                             visible: row.modelData.count > 1
-                            implicitWidth: Math.max(34, times.implicitWidth + 14)
+                            implicitWidth: Math.max(Theme.control, times.implicitWidth + 2 * Theme.gapSmall)
                             implicitHeight: Theme.control
                             radius: Theme.corner
                             color: row.current ? Theme.selectedChip : Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.16)
@@ -522,7 +530,7 @@ Item {
                 Column {
                     visible: screen.errors.length === 0
                     anchors.centerIn: parent
-                    width: Math.min(parent.width - 80, 480)
+                    width: Math.min(parent.width - 4 * Theme.gapPage, Theme.sized(480))
                     spacing: Theme.gapSmall
                     Text {
                         width: parent.width
@@ -555,21 +563,15 @@ Item {
             Layout.fillHeight: true
             color: Theme.panel
 
-            Flickable {
+            Scrolled {
                 anchors.fill: parent
-                contentHeight: (modSide.visible ? modSide.implicitHeight : side.implicitHeight) + 28
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                Wheel {}
-                ScrollBar.vertical: Scroller {}
+                padding: Theme.gapCard
 
                 Column {
                     id: modSide
                     readonly property var mod: screen.view === 1 ? screen.culprits[culpritList.at] || null : null
                     readonly property var theirs: mod ? screen.reader.errorsOf(mod.name) || [] : []
-                    x: 14
-                    y: 14
-                    width: parent.width - 28
+                    width: parent.width
                     visible: mod !== null
                     spacing: Theme.gap
                     Text { width: parent.width; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.heading; font.weight: Font.DemiBold; text: modSide.mod ? modSide.mod.name || Theme.say("No mod recognised") : "" }
@@ -594,9 +596,7 @@ Item {
                 }
                 Column {
                     id: side
-                    x: 14
-                    y: 14
-                    width: parent.width - 28
+                    width: parent.width
                     visible: screen.error !== null && screen.view !== 1
 
                     CopyText {
@@ -614,7 +614,7 @@ Item {
                         text: screen.error ? Theme.plural(screen.error.count, "{} time, first at line {}", "{} times, first at line {}", Theme.count(screen.error.line)) : ""
                     }
 
-                    Item { width: 1; height: 10 }
+                    Item { width: 1; height: Theme.gapMedium }
                     Row {
                         spacing: Theme.gapSmall
                         Btn { text: Theme.say("Show in log"); onClicked: screen.showLine(screen.error.line) }
@@ -663,15 +663,15 @@ Item {
                     Rectangle {
                         visible: !!screen.error && screen.error.trace.length > 0
                         width: parent.width
-                        height: trace.implicitHeight + 20
+                        height: trace.implicitHeight + 2 * Theme.gapMedium
                         radius: Theme.cornerLarge
                         color: Theme.well
                         clip: true
                         CopyText {
                             id: trace
-                            x: 10
-                            y: 10
-                            width: parent.width - 20
+                            x: Theme.gapMedium
+                            y: Theme.gapMedium
+                            width: parent.width - 2 * Theme.gapMedium
                             // A line breaks only after a separator: a zero-width space
                             // follows each.
                             wrapMode: Theme.stored.wrapTrace ? TextEdit.Wrap : TextEdit.NoWrap

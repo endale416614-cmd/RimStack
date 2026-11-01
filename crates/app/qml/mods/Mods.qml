@@ -161,7 +161,10 @@ Item {
     property Connections sortWatch: Connections {
         target: Hub.mods
         function onLibraryVersionChanged() {
-            mods.select(-1, false)
+            const kept = Hub.mods.carried(mods.selectedIds)
+            mods.also = kept.also
+            mods.selectedActive = kept.active
+            mods.selectedId = kept.first
             mods.rescanned()
         }
         function onDone(said) {
@@ -195,6 +198,7 @@ Item {
     readonly property Columns columns: Columns {
         prefs: mods.prefs
         loadTimes: mods.overview.loadTimes === true
+        loadTimesHow: mods.overview.loadTimesHow || ""
         onShownByAsked: Hub.mods.showBy(shownBy, descending)
     }
     function categoryMenu(item, x, y, category) {

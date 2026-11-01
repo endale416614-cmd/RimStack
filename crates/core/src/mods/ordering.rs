@@ -27,7 +27,7 @@ pub fn all_rules(library: &Library, mods: &[Mod], sources: Sources) -> Vec<Rule>
     found.extend(from_files.map(|d| Rule {
         first: d.first,
         then: d.then,
-        kind: Kind::Inferred,
+        kind: if d.code { Kind::Inferred } else { Kind::Hint },
     }));
     if let Some(community) = sources.community {
         found.extend(community.rules(&abouts));
@@ -56,6 +56,9 @@ pub fn sorted_by_category(
     sources: Sources,
 ) -> (Vec<Mod>, sort::Sorted) {
     let found = all_rules(library, &mods, sources);
+    for m in &mut mods {
+        m.category = m.filed;
+    }
     if let Some(community) = sources.community {
         let abouts = library.abouts(&mods);
         let top = abouts
@@ -63,7 +66,7 @@ pub fn sorted_by_category(
             .map(|about| about.is_some_and(|a| community.loads_at_top(&a.package_id)));
         let top: Vec<bool> = top.collect();
         for (m, top) in mods.iter_mut().zip(top) {
-            if top && m.category > Category::Libraries {
+            if top && !m.chosen && m.category > Category::Libraries {
                 m.category = Category::Libraries;
             }
         }
@@ -88,8 +91,26 @@ pub fn sorted_by_category(
     for group in &mut sorted.groups {
         *group /= per_category;
     }
+    let before: Vec<Category> = mods.iter().map(|m| m.category).collect();
     for (m, &group) in mods.iter_mut().zip(&sorted.groups) {
         m.category = Category::ALL[group];
+    }
+    let held_by: Vec<String> = (0..mods.len())
+        .map(|at| {
+            let pulled = mods[at].category < before[at];
+            let holder = sorted.kept.iter().find(|r| {
+                r.first == at
+                    && !matches!(r.kind, Kind::Hint | Kind::CommunityBottom)
+                    && mods[r.then].category == mods[at].category
+            });
+            match (pulled, holder) {
+                (true, Some(rule)) => mods[rule.then].name.clone(),
+                _ => String::new(),
+            }
+        })
+        .collect();
+    for (m, holder) in mods.iter_mut().zip(held_by) {
+        m.held_by = holder;
     }
     (mods, sorted)
 }
@@ -217,7 +238,7 @@ mod tests {
             hints: false,
         };
         let mut mods = library.active.clone();
-        mods[2].category = Category::Content;
+        mods[2].filed = Category::Content;
         mods[0].sub = "Genes".into();
         mods[2].sub = "Genes".into();
         let (mods, sorted) = sorted_by_category(&library, mods, sources);
@@ -229,5 +250,35 @@ mod tests {
         assert_eq!(names, ["b", "a", "c", "d"]);
         assert_eq!(mods[2].category, Category::Content);
         assert_eq!(sorted.groups[3], Category::Textures as usize);
+    }
+
+    #[test]
+    fn a_mod_filed_by_hand_keeps_its_category_while_a_rule_holds_it_earlier() {
+        let (_tmp, library) = four_mods();
+        let held = yours(&[("t.a", "t.c")]);
+        let none = UserRules::default();
+        let sources = |yours| Sources {
+            yours,
+            community: None,
+            from_files: &[],
+            hints: false,
+        };
+        let mut mods = library.active.clone();
+        mods[0].filed = Category::Interface;
+        mods[0].chosen = true;
+        mods[2].filed = Category::Libraries;
+        let (mods, _) = sorted_by_category(&library, mods, sources(&held));
+        let a = &mods[0];
+        assert_eq!(
+            (a.category, a.filed),
+            (Category::Libraries, Category::Interface)
+        );
+        assert_eq!(a.held_by, "c");
+        assert_eq!(mods[1].held_by, "");
+        let (mods, _) = sorted_by_category(&library, mods, sources(&none));
+        assert_eq!(
+            (mods[0].category, mods[0].held_by.as_str()),
+            (Category::Interface, "")
+        );
     }
 }

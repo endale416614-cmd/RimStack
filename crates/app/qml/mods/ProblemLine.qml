@@ -15,14 +15,15 @@ GridLayout {
     property string ignore
     property string packageId
     // The action on a line of its own, under the words.
-    property bool stacked: false
+    property bool stacked: width - actions.implicitWidth - mark.width - 2 * columnSpacing < measure.averageCharacterWidth * 20
     columnSpacing: Theme.gap
     rowSpacing: Theme.gapTiny
     columns: 3 - Number(stacked)
-    Icon { Layout.alignment: Qt.AlignTop; Layout.topMargin: Theme.gapHair; name: line.error ? "circle-alert" : "triangle-alert"; size: 14; color: line.error ? Theme.err : Theme.warn }
+    FontMetrics { id: measure; font.pixelSize: Theme.body }
+    Icon { id: mark; Layout.alignment: Qt.AlignTop; Layout.topMargin: Theme.gapHair; name: line.error ? "circle-alert" : "triangle-alert"; color: line.error ? Theme.err : Theme.warn }
     Text {
         Layout.fillWidth: true
-        wrapMode: Text.WordWrap
+        wrapMode: Text.Wrap
         textFormat: Text.StyledText
         color: Theme.ink
         font.pixelSize: Theme.body
@@ -32,6 +33,7 @@ GridLayout {
         TapHandler { enabled: line.name !== "" && line.modId >= 0; onTapped: Mods.showMod(line.modId) }
     }
     Row {
+        id: actions
         Layout.alignment: Qt.AlignTop
         Layout.row: Number(line.stacked)
         Layout.column: 2 - Number(line.stacked)

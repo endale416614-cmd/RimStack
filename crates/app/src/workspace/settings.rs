@@ -63,6 +63,10 @@ const SHIPPED: &[(&str, &str)] = &[
         "Português",
         include_str!("../../assets/languages/Português.json"),
     ),
+    (
+        "Русский",
+        include_str!("../../assets/languages/Русский.json"),
+    ),
 ];
 
 const EVERY_TEXT: &str = include_str!("../../assets/words.json");

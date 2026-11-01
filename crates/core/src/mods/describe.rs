@@ -30,6 +30,7 @@ pub enum Fix {
     Search(String),
     Deactivate(usize),
     Trust,
+    Sort,
 }
 
 pub fn warned_for_version(own: &[Trouble]) -> bool {
@@ -49,12 +50,13 @@ impl Fix {
             Fix::Search(_) => "search",
             Fix::Deactivate(_) => "deactivate",
             Fix::Trust => "trust",
+            Fix::Sort => "sort",
         }
     }
 
     pub fn target(&self) -> String {
         match self {
-            Fix::None | Fix::Trust => String::new(),
+            Fix::None | Fix::Trust | Fix::Sort => String::new(),
             Fix::Activate(id) | Fix::Subscribe(id) | Fix::Search(id) => id.clone(),
             Fix::Deactivate(at) => at.to_string(),
         }
@@ -87,6 +89,7 @@ impl Fix {
             Fix::Search(_) => named("Search the Workshop"),
             Fix::Deactivate(_) => named("Deactivate the other"),
             Fix::Trust => named("Ignore"),
+            Fix::Sort => named("Sort"),
         }
     }
 
@@ -97,6 +100,7 @@ impl Fix {
             Fix::Subscribe(_) | Fix::Search(_) => named("Needed and not installed"),
             Fix::Deactivate(_) => named("Cannot be used together"),
             Fix::Trust => named("Made for another game version"),
+            Fix::Sort => named("In the wrong order"),
         }
     }
 }
@@ -260,6 +264,38 @@ pub fn troubles(
         .into_iter()
         .map(|problems| problems.into_iter().map(in_words).collect())
         .collect();
+    for broken in crate::mods::rules::among(&abouts, &library.game_version)
+        .into_iter()
+        .filter(Rule::broken)
+    {
+        let Some(by) = broken.declared_by() else {
+            continue;
+        };
+        let after = by == broken.then;
+        let other = if after { broken.first } else { broken.then };
+        let key = format!("order:{}", crate::rimworld::id::fold(&mods[other].id));
+        if all[by].iter().any(|t| t.key == key) {
+            continue;
+        }
+        let name = &mods[other].name;
+        let (words, short) = match after {
+            true => (
+                say!("Has to load after {}, which is below it.", name),
+                say!("Load after {}", name),
+            ),
+            false => (
+                say!("Has to load before {}, which is above it.", name),
+                say!("Load before {}", name),
+            ),
+        };
+        all[by].push(Trouble {
+            error: false,
+            words,
+            short,
+            fix: Fix::Sort,
+            key,
+        });
+    }
     for (m, own) in mods.iter().zip(&mut all) {
         if m.installed.is_none() {
             own.push(Trouble {
@@ -519,6 +555,60 @@ mod tests {
         assert!(found[1].is_empty());
         assert_eq!(found[2][0].short.to_string(), "Not installed");
         assert_eq!(found[2][0].fix, Fix::Search("not.here".to_string()));
+    }
+
+    #[test]
+    fn a_mod_loaded_against_its_own_rules_is_warned_with_sort_as_the_fix() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("Mods");
+        let abouts = [
+            (
+                "switch",
+                "<ModMetaData><packageId>a.switch</packageId><name>Switch</name><modDependencies><li><packageId>a.frame</packageId></li></modDependencies><loadAfter><li>A.Frame</li></loadAfter></ModMetaData>",
+            ),
+            (
+                "frame",
+                "<ModMetaData><packageId>a.frame</packageId><name>Frame</name></ModMetaData>",
+            ),
+        ];
+        for (folder, about) in abouts {
+            fs::create_dir_all(root.join(folder).join("About")).unwrap();
+            fs::write(root.join(folder).join("About/About.xml"), about).unwrap();
+        }
+        let roots = [ModRoot {
+            path: root,
+            source: Source::Local,
+        }];
+        let check = |order: [&str; 2]| {
+            let active = order.map(String::from);
+            let library = build(scan(&roots), &active, "1.6");
+            troubles(&library, &library.active, Versions::Ignored, &Names::new())
+        };
+        let wrong = check(["a.switch", "a.frame"]);
+        let said: Vec<(bool, String, String, &Fix, &str)> = wrong[0]
+            .iter()
+            .map(|t| {
+                (
+                    t.error,
+                    t.words.to_string(),
+                    t.short.to_string(),
+                    &t.fix,
+                    t.key.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            said,
+            [(
+                false,
+                "Has to load after Frame, which is below it.".to_string(),
+                "Load after Frame".to_string(),
+                &Fix::Sort,
+                "order:a.frame"
+            )]
+        );
+        assert!(wrong[1].is_empty());
+        assert!(check(["a.frame", "a.switch"]).iter().all(Vec::is_empty));
     }
 
     #[test]

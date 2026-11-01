@@ -38,25 +38,14 @@ impl Installed {
     }
 
     pub fn assemblies(&self) -> Vec<String> {
-        let dlls_in = |dir: PathBuf| -> Vec<String> {
-            let entries = std::fs::read_dir(dir.join("Assemblies"))
-                .into_iter()
-                .flatten();
-            entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("dll")))
-                .filter_map(|p| Some(p.file_stem()?.to_string_lossy().to_lowercase()))
-                .collect()
-        };
-        let mut names = dlls_in(self.path.clone());
-        for entry in std::fs::read_dir(&self.path)
+        let mut names: Vec<String> = content_folders(&self.path)
             .into_iter()
-            .flatten()
-            .flatten()
-        {
-            names.extend(dlls_in(entry.path()));
-        }
+            .filter(|(name, _)| name == "assemblies")
+            .flat_map(|(_, dir)| std::fs::read_dir(dir).into_iter().flatten().flatten())
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("dll")))
+            .filter_map(|p| Some(p.file_stem()?.to_string_lossy().to_lowercase()))
+            .collect();
         names.sort_unstable();
         names.dedup();
         names
@@ -97,29 +86,36 @@ impl Installed {
     }
 }
 
-/// Content folders sit in the mod's root or one level down, or where `LoadFolders.xml` points.
-fn kinds(mod_root: &Path) -> Kinds {
-    let mut found = Kinds::default();
-    let mut look = |dir: &Path, descend: bool| -> Vec<PathBuf> {
-        let mut below = Vec::new();
-        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+/// At any depth, as a mod may keep its content where its `LoadFolders.xml` points,
+/// such as `1.7/Base`; a content folder is not looked inside.
+fn content_folders(mod_root: &Path) -> Vec<(String, PathBuf)> {
+    let mut found = Vec::new();
+    let mut pending = vec![mod_root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             if !entry.file_type().is_ok_and(|t| t.is_dir()) {
                 continue;
             }
-            match entry.file_name().to_string_lossy().to_lowercase().as_str() {
-                "defs" => found.defs = true,
-                "patches" => found.patches = true,
-                "assemblies" => found.assemblies = true,
-                "textures" => found.textures = true,
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            match name.as_str() {
+                "defs" | "patches" | "assemblies" | "textures" => found.push((name, entry.path())),
                 "about" | "source" | "languages" | "sounds" | ".git" => {}
-                _ if descend => below.push(entry.path()),
-                _ => {}
+                _ => pending.push(entry.path()),
             }
         }
-        below
-    };
-    for dir in look(mod_root, true) {
-        look(&dir, false);
+    }
+    found
+}
+
+fn kinds(mod_root: &Path) -> Kinds {
+    let mut found = Kinds::default();
+    for (name, _) in content_folders(mod_root) {
+        match name.as_str() {
+            "defs" => found.defs = true,
+            "patches" => found.patches = true,
+            "assemblies" => found.assemblies = true,
+            _ => found.textures = true,
+        }
     }
     found
 }
@@ -328,6 +324,9 @@ fn row(m: &Installed, id: String, category: Category, installed: ModId) -> Mod {
         patched: m.code.aims.iter().map(patched).collect(),
         sub: String::new(),
         load_micros: None,
+        filed: category,
+        chosen: false,
+        held_by: String::new(),
         name: m.display_name().to_string(),
         author: about.map(|a| a.authors.join(", ")).unwrap_or_default(),
         version: about
@@ -414,6 +413,9 @@ impl Library {
                         patched: Default::default(),
                         sub: String::new(),
                         load_micros: None,
+                        filed: Category::Content,
+                        chosen: false,
+                        held_by: String::new(),
                         name: written.to_string(),
                         author: String::new(),
                         version: String::new(),

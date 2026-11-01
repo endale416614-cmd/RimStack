@@ -14,6 +14,7 @@ FilterField {
     readonly property alias suggesting: suggestions.visible
     onTypingChanged: suggestions.shut = false
     onEditingChanged: suggestions.shut = false
+    onTapped: suggestions.shut = false
     onEscaped: suggestions.shut = true
     Popup {
         id: suggestions
@@ -25,7 +26,8 @@ FilterField {
         width: Math.min(filter.width, Theme.sized(420))
         padding: 6
         background: Rectangle { radius: Theme.cornerLarge; color: Theme.bar; border.width: 1; border.color: Theme.line }
-        FontMetrics { id: keyFont; font.family: "monospace"; font.pixelSize: Theme.small }
+        readonly property string widestKey: "is:notinsave"
+        TextMetrics { id: keyFont; font.family: "monospace"; font.pixelSize: Theme.small; text: suggestions.widestKey }
         contentItem: Column {
             id: suggestList
             Repeater {
@@ -59,8 +61,8 @@ FilterField {
                     color: offerHover.hovered ? Theme.chip : "transparent"
                     Accessible.role: Accessible.Button
                     Accessible.name: Theme.fill("Filter by {}", modelData[0])
-                    Text { id: offerKey; width: keyFont.advanceWidth("is:notinsave"); anchors.left: parent.left; anchors.leftMargin: 8; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink; font: keyFont.font; text: offer.modelData[0] }
-                    Text { anchors.left: offerKey.right; anchors.leftMargin: Theme.sized(16); anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; color: Theme.ink2; font.pixelSize: Theme.small; text: offer.modelData[1] }
+                    Text { id: offerKey; width: keyFont.advanceWidth; anchors.left: parent.left; anchors.leftMargin: Theme.gap; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink; font: keyFont.font; text: offer.modelData[0] }
+                    Text { anchors.left: offerKey.right; anchors.leftMargin: Theme.sized(16); anchors.right: parent.right; anchors.rightMargin: Theme.gap; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; color: Theme.ink2; font.pixelSize: Theme.small; text: offer.modelData[1] }
                     HoverHandler { id: offerHover }
                     TapHandler {
                         onTapped: {

@@ -182,13 +182,14 @@ Rectangle {
                         required property var modelData
                         readonly property bool current: index === view.chosen
                         width: list.width
-                        height: Theme.sized(40)
+                        height: Math.max(Theme.sized(40), names.implicitHeight + 2 * Theme.gapTiny)
                         Rectangle { anchors.fill: parent; anchors.leftMargin: Theme.gapSmall; anchors.rightMargin: Theme.gapSmall; radius: Theme.corner; color: row.current ? Theme.accent : Theme.hover; opacity: row.current ? 1 : rowHover.hovered ? 0.04 : 0 }
                         HoverHandler { id: rowHover }
                         TapHandler { onTapped: { view.chosen = row.index; view.forceActiveFocus() } }
                         Column {
-                            x: 16
-                            width: parent.width - 34
+                            id: names
+                            x: Theme.gapWide
+                            width: parent.width - 2 * Theme.gapWide - Theme.gapHair
                             anchors.verticalCenter: parent.verticalCenter
                             Text { width: parent.width; elide: Text.ElideLeft; color: row.current ? Theme.onSelected : Theme.ink; font.pixelSize: Theme.body; text: row.modelData.file }
                             Text {
@@ -312,7 +313,7 @@ Rectangle {
                 Layout.margins: Theme.gapWide
                 Layout.topMargin: Theme.gapTiny
                 property real cut: 0.5
-                Picture { id: under; anchors.fill: parent; anchors.bottomMargin: 36; named: Theme.say("The earlier mod's picture"); file: view.texture ? view.texture.earlierShown : "" }
+                Picture { id: under; anchors.fill: parent; anchors.bottomMargin: captions.height; named: Theme.say("The earlier mod's picture"); file: view.texture ? view.texture.earlierShown : "" }
                 Item {
                     x: under.width * slider.cut
                     width: under.width - x
@@ -322,10 +323,10 @@ Rectangle {
                 }
                 Item {
                     x: under.width * slider.cut - width / 2
-                    width: 28
+                    width: Theme.sized(28)
                     height: under.height
                     Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: 2; height: parent.height; color: Theme.focus }
-                    Rectangle { anchors.centerIn: parent; width: 14; height: 34; radius: Theme.corner; color: Theme.focus }
+                    Rectangle { anchors.centerIn: parent; width: Theme.gapCard; height: Theme.sized(34); radius: Theme.corner; color: Theme.focus }
                     DragHandler {
                         target: null
                         xAxis.enabled: true
@@ -335,9 +336,10 @@ Rectangle {
                     HoverHandler { cursorShape: Qt.SplitHCursor }
                 }
                 RowLayout {
+                    id: captions
                     anchors.bottom: parent.bottom
                     width: parent.width
-                    height: Theme.sized(28)
+                    height: Math.max(implicitHeight, Theme.sized(28))
                     spacing: Theme.gap
                     Text { color: Theme.ink; font.pixelSize: Theme.body; text: "◀ " + ((view.report.earlier || {}).name || "") }
                     Text { visible: !!view.texture && view.texture.keepsEarlier; color: Theme.ok; font.pixelSize: Theme.body; text: Theme.say("✓ Kept") }

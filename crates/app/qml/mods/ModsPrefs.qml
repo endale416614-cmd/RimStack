@@ -3,8 +3,8 @@ import QtQuick
 
 Settings {
     category: "Mods"
-    property real inactive: 290
-    property real details: 360
+    property real inactive: 0
+    property real details: 0
     property bool inactiveHidden: false
     property string listName: ""
     property string lastMod: ""

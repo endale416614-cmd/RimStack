@@ -9,12 +9,12 @@ Rectangle {
     property color tone: Theme.ink2
     property bool onAccent: false
     property string tip
-    property real maxWidth: 4000
+    property real maxWidth: Infinity
     property bool pressable: false
     signal clicked()
 
     implicitHeight: pressable ? Theme.control : Theme.tag
-    implicitWidth: Math.min(maxWidth, content.implicitWidth + 14)
+    implicitWidth: Math.min(maxWidth, content.implicitWidth + Theme.gapCard)
     radius: height / 2
     color: onAccent ? Theme.selectedChip : Qt.rgba(tone.r, tone.g, tone.b, hovering.hovered && pressable ? 0.28 : 0.16)
     Behavior on color { ColorAnimation { duration: Theme.quick } }
@@ -28,14 +28,14 @@ Rectangle {
     Keys.onSpacePressed: chip.clicked()
     Row {
         id: content
-        x: 7
+        x: Theme.gapCard / 2
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.gapTiny
         Icon { visible: chip.icon !== ""; anchors.verticalCenter: parent.verticalCenter; name: chip.icon; size: Theme.sized(11); color: label.color }
         Text {
             id: label
             visible: chip.text !== ""
-            width: Math.min(implicitWidth, chip.maxWidth - 14 - (chip.icon !== "" ? Theme.sized(11) + 4 : 0))
+            width: Math.min(implicitWidth, chip.maxWidth - Theme.gapCard - label.x)
             elide: Text.ElideRight
             color: chip.onAccent ? Theme.onSelected : chip.tone
             font.pixelSize: Theme.caption

@@ -53,7 +53,7 @@ Item {
     Accessible.selected: current
 
     width: listView.width - listView.barRoom
-    height: isSub ? Theme.sized(24) : again ? Theme.sized(22) : isHeader ? Theme.sized(32) : comfortable ? Math.max(Theme.sized(52), Theme.row + 10) : Theme.row
+    height: isSub ? Theme.sized(24) : again ? Theme.sized(22) : isHeader ? Theme.sized(32) : comfortable ? Math.max(Theme.sized(52), Theme.row + Theme.gapMedium) : Theme.row
 
     property real offset: 0
     transform: Translate { y: row.offset }
@@ -83,7 +83,7 @@ Item {
 
     Rectangle {
         x: 2
-        y: row.isHeader && !row.isSub && !row.again ? 10 : 0
+        y: row.isHeader && !row.isSub && !row.again ? Theme.gapMedium : 0
         width: 3
         height: parent.height - y
         radius: row.isHeader && !row.isSub && !row.again ? 1.5 : 0
@@ -116,7 +116,7 @@ Item {
     Row {
         visible: row.isSub
         anchors.verticalCenter: parent.verticalCenter
-        x: 40
+        x: Theme.gapWide + row.listView.numberWidth
         spacing: Theme.gapSmall
         Text { width: Theme.sized(10); color: Theme.ink3; font.pixelSize: Theme.caption; text: row.collapsed ? "▸" : "▾" }
         Text { color: Theme.ink2; font.pixelSize: Theme.small; text: row.name; Tip { text: row.collapsed ? Theme.say("Click to show its mods") : Theme.say("The mods whose first tag this is. Click to fold them away.") } }
@@ -151,10 +151,10 @@ Item {
         visible: row.isHeader && !row.isSub && !row.again
         anchors.bottom: parent.bottom
         anchors.bottomMargin: Theme.gapSmall
-        x: 16
+        x: Theme.gapWide
         spacing: Theme.gapSmall
         Text { width: Theme.sized(10); color: Theme.ink2; font.pixelSize: Theme.caption; text: row.collapsed ? "▸" : "▾" }
-        Icon { name: Theme.categoryIcons[row.category] || ""; color: row.categoryColour; size: 14; anchors.verticalCenter: parent.verticalCenter }
+        Icon { name: Theme.categoryIcons[row.category] || ""; color: row.categoryColour; anchors.verticalCenter: parent.verticalCenter }
         Text { color: Theme.ink; font.pixelSize: Theme.small; font.weight: Font.DemiBold; text: Theme.say(row.name); Tip { text: row.collapsed ? Theme.say("Click to show its mods") : Theme.say("Click to fold its mods away") } }
         Text { color: Theme.ink3; font.pixelSize: Theme.small; text: Theme.count(row.count) }
     }
@@ -196,7 +196,7 @@ Item {
         readonly property var mark: row.columns ? (Mods.conflictMarks[row.modId] || null) : null
         Text {
             visible: row.columns
-            Layout.preferredWidth: Theme.sized(28)
+            Layout.preferredWidth: row.listView.numberWidth
             horizontalAlignment: Text.AlignRight
             color: row.current ? Theme.onSelectedDim : Theme.ink3
             font.pixelSize: Theme.small
@@ -227,7 +227,7 @@ Item {
                     visible: status === Image.Ready
                     asynchronous: true
                     fillMode: Image.PreserveAspectCrop
-                    sourceSize.width: 192
+                    sourceSize.width: Theme.sized(192)
                     source: row.comfortable && row.picture !== "" ? Theme.fileUrl(row.picture) : ""
                 }
             }
@@ -252,7 +252,7 @@ Item {
             Chip { visible: row.fresh; onAccent: row.current; tone: Theme.ok; text: Theme.say("New"); tip: Theme.say("Installed since the game was last started from RimStack") }
             Row {
                 id: tagRow
-                visible: nameText.implicitWidth + implicitWidth + 40 < nameCell.width
+                visible: nameText.implicitWidth + implicitWidth + 5 * Theme.gap < nameCell.width
                 spacing: Theme.gapSmall
                 Repeater {
                     model: row.tags === "" ? [] : row.tags.split(", ").slice(0, 2)
@@ -265,7 +265,7 @@ Item {
                 }
             }
             Chip {
-                visible: !tagRow.visible && row.tags !== "" && nameCell.width > nameText.implicitWidth + 44
+                visible: !tagRow.visible && row.tags !== "" && nameCell.width > nameText.implicitWidth + 5 * Theme.gap + Theme.gapTiny
                 onAccent: row.current
                 readonly property var all: row.tags.split(", ")
                 readonly property bool headed: row.columns && Mods.columns.shownBy === "" && Mods.prefs.headings !== 0
@@ -321,7 +321,7 @@ Item {
         }
         Item {
             visible: row.columns
-            Layout.preferredWidth: row.listView.wide ? Theme.sized(124) : Theme.sized(44)
+            Layout.preferredWidth: row.listView.quickWidth
             Layout.fillHeight: true
             Chip {
                 id: saying
@@ -465,9 +465,9 @@ Item {
         onExited: if (Mods.drag.target && Mods.drag.target.item === row) Mods.drag.target = null
         Rectangle {
             visible: parent.containsDrag
-            x: 6
+            x: Theme.gapSmall
             y: -1.5
-            width: parent.width - 12
+            width: parent.width - 2 * Theme.gapSmall
             height: 3
             radius: Math.min(width, height) / 2
             color: Theme.focus

@@ -140,14 +140,24 @@ rm -rf "$game/Mods/fourth" "$game/Mods/900001"
 [ "$ok" = 0 ] || fail "the live changes"
 
 "$(dirname "$0")/fixture-game.sh" "$tmp/screens"
-mkdir -p "$tmp/settings-screens/RimStack"
-printf '{ "language": "%s", "setupDone": "yes" }' "$language" > "$tmp/settings-screens/RimStack/settings.json"
-RIMSTACK_GAME="$tmp/screens/game" RIMSTACK_WORKSHOP="$tmp/screens/workshop" RIMSTACK_CONFIG="$tmp/screens/config" \
-    XDG_DATA_HOME="$tmp/data-screens" XDG_CONFIG_HOME="$tmp/settings-screens" \
-    QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 90 "$app" --check=screens >| "$tmp/screens.log" 2>&1 && ok=0 || ok=$?
+on_fixture() {
+    local check="$1" seconds="$2"
+    mkdir -p "$tmp/settings-$check/RimStack"
+    printf '{ "language": "%s", "setupDone": "yes" }' "$language" > "$tmp/settings-$check/RimStack/settings.json"
+    RIMSTACK_GAME="$tmp/screens/game" RIMSTACK_WORKSHOP="$tmp/screens/workshop" RIMSTACK_CONFIG="$tmp/screens/config" \
+        XDG_DATA_HOME="$tmp/data-$check" XDG_CONFIG_HOME="$tmp/settings-$check" \
+        QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout "$seconds" "$app" "--check=$check" >| "$tmp/$check.log" 2>&1 && ok=0 || ok=$?
+}
+on_fixture screens 90
 shown "$tmp/screens.log"
 sound "$tmp/screens.log" "--check=screens"
 [ "$ok" = 0 ] || fail "the screen checks"
+
+on_fixture layout 300
+grep -E '^qml: check (FAIL|  )' "$tmp/layout.log" | sed 's/^qml: //' || true
+echo "check ok    $(grep -c '^qml: check ok' "$tmp/layout.log") layouts with nothing overlapping or spilling"
+sound "$tmp/layout.log" "--check=layout"
+[ "$ok" = 0 ] || fail "the layout checks"
 
 # Closing the window as a person does, while work runs, and starting with
 # something missing or broken: each must end with 0, no panic, no QML error.

@@ -59,7 +59,7 @@ Item {
                                 id: folderTab
                                 required property string modelData
                                 readonly property bool on: modelData === screen.folder
-                                width: folderText.implicitWidth + 22
+                                width: folderText.implicitWidth + 2 * Theme.gapMedium
                                 height: Theme.sized(24)
                                 radius: Theme.corner
                                 color: on ? Theme.ctlHi : "transparent"
@@ -121,7 +121,8 @@ Item {
                     readonly property bool current: index === screen.selected
                     readonly property color quiet: current ? Theme.onSelectedDim : Theme.ink2
                     width: list.width
-                    height: Math.max(screen.reader.pictured ? 82 : 0, rowFacts.implicitHeight + Theme.sized(20))
+                    readonly property real endGap: Theme.gapPage + Theme.gapSmall
+                    height: Math.max(screen.reader.pictured ? thumb.implicitHeight + 2 * Theme.gapMedium : 0, rowFacts.implicitHeight + 2 * Theme.gapMedium)
                     Accessible.role: Accessible.ListItem
                     Accessible.name: modelData.name + ", " + modelData.said
                     Rectangle {
@@ -132,18 +133,19 @@ Item {
                         color: row.current ? Theme.accent : Theme.hover
                         opacity: row.current ? 1 : rowHover.hovered ? 0.05 : 0
                     }
-                    Rectangle { visible: !row.current; anchors.bottom: parent.bottom; anchors.bottomMargin: -1; x: 22; width: parent.width - 48; height: 1; color: Theme.line; opacity: 0.6 }
+                    Rectangle { visible: !row.current; anchors.bottom: parent.bottom; anchors.bottomMargin: -1; x: Theme.gapPage; width: parent.width - Theme.gapPage - row.endGap; height: 1; color: Theme.line; opacity: 0.6 }
                     HoverHandler { id: rowHover }
                     TapHandler { onTapped: screen.selected = row.index }
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: Theme.gapPage
-                        anchors.rightMargin: 26
+                        anchors.rightMargin: row.endGap
                         spacing: Theme.gapLarge
                         Rectangle {
+                            id: thumb
                             visible: screen.reader.pictured
-                            implicitWidth: 104
-                            implicitHeight: 62
+                            implicitWidth: Theme.sized(104)
+                            implicitHeight: Theme.sized(62)
                             radius: Theme.corner
                             color: Theme.panel
                             border.width: row.modelData.preview ? 0 : 1
@@ -155,10 +157,10 @@ Item {
                                 asynchronous: true
                                 cache: false
                                 fillMode: Image.PreserveAspectCrop
-                                sourceSize.width: 208
+                                sourceSize.width: Theme.sized(208)
                                 source: row.modelData.preview ? Theme.fileUrl(row.modelData.preview) : ""
                             }
-                            Icon { visible: !row.modelData.preview; anchors.centerIn: parent; name: "save"; size: 22; color: Theme.ink3 }
+                            Icon { visible: !row.modelData.preview; anchors.centerIn: parent; name: "save"; size: Theme.sized(22); color: Theme.ink3 }
                         }
                         Column {
                             id: rowFacts
@@ -191,7 +193,7 @@ Item {
                 Column {
                     visible: screen.saves.length === 0
                     anchors.centerIn: parent
-                    width: Math.min(parent.width - 80, 460)
+                    width: Math.min(parent.width - 4 * Theme.gapPage, Theme.sized(460))
                     spacing: Theme.gapSmall
                     Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; color: Theme.ink; font.pixelSize: Theme.title; font.weight: Font.DemiBold; text: screen.reader.busy ? Theme.say("Reading saves…") : Theme.say("No saves") }
                     Text { visible: !screen.reader.busy; width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: Theme.ink2; font.pixelSize: Theme.body; lineHeight: 1.3; text: screen.folder !== "" ? Theme.fill("RimSaves folder {} is empty", screen.folder) : "" }
@@ -206,181 +208,171 @@ Item {
             Layout.fillHeight: true
             color: Theme.panel
 
-            Flickable {
+            Scrolled {
+                id: side
                 anchors.fill: parent
-                contentHeight: side.implicitHeight + 28
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                Wheel {}
-                ScrollBar.vertical: Scroller {}
+                padding: Theme.gapCard
+                visible: screen.save !== null
 
-                Column {
-                    id: side
-                    x: 14
-                    y: 14
-                    width: parent.width - 28
-                    visible: screen.save !== null
-
-                    Rectangle {
-                        visible: !!screen.save && !!screen.save.preview
-                        width: parent.width
-                        height: 190
-                        radius: Theme.cornerLarge
-                        color: Theme.well
-                        clip: true
-                        Image {
-                            anchors.fill: parent
-                            asynchronous: true
-                            cache: false
-                            fillMode: Image.PreserveAspectCrop
-                            sourceSize.width: 720
-                            source: screen.save && screen.save.preview ? Theme.fileUrl(screen.save.preview) : ""
-                        }
+                Rectangle {
+                    visible: !!screen.save && !!screen.save.preview
+                    width: parent.width
+                    height: Theme.sized(190)
+                    radius: Theme.cornerLarge
+                    color: Theme.well
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        asynchronous: true
+                        cache: false
+                        fillMode: Image.PreserveAspectCrop
+                        sourceSize.width: Theme.sized(720)
+                        source: screen.save && screen.save.preview ? Theme.fileUrl(screen.save.preview) : ""
                     }
-                    Item { visible: !!screen.save && !!screen.save.preview; width: 1; height: 12 }
-                    Text { width: parent.width; wrapMode: Text.WrapAnywhere; color: Theme.ink; font.pixelSize: Theme.heading; font.weight: Font.DemiBold; text: screen.save ? screen.save.name : "" }
-                    Text {
-                        width: parent.width
-                        topPadding: Theme.gapHair
-                        wrapMode: Text.WordWrap
-                        color: Theme.ink2
-                        font.pixelSize: Theme.body
-                        text: screen.save ? (screen.reader.rimsaves ? Theme.fill("In {}, {}, {} MB", screen.save.folder, screen.when(screen.save.modified), screen.save.megabytes.toFixed(1)) : Theme.fill("{}, {} MB", screen.when(screen.save.modified), screen.save.megabytes.toFixed(1))) : ""
-                    }
-                    Flow {
-                        width: parent.width
-                        topPadding: Theme.gapMedium
-                        spacing: Theme.gapSmall
-                        Btn {
-                            visible: !!screen.save && screen.save.usable
-                            primary: !!screen.save && screen.save.verdict.breaks
-                            icon: "list"
-                            text: Theme.say("Use this save's mod list")
-                            onClicked: screen.useList(screen.save.ids)
-                        }
-                        Btn { icon: "folder-open"; text: Theme.say("Open folder"); onClicked: Qt.openUrlExternally(Theme.fileUrl(screen.save.dir)) }
-                    }
-
-                    GroupTitle { visible: facts.count > 0; text: Theme.say("Colony") }
-                    Repeater {
-                        id: facts
-                        model: screen.save && screen.save.facts ? screen.save.facts : []
-                        RowLayout {
-                            id: fact
-                            required property var modelData
-                            width: side.width
-                            height: Theme.sized(22)
-                            Text { Layout.preferredWidth: Theme.sized(110); color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.say(fact.modelData[0]) }
-                            Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: fact.modelData[1] }
-                        }
-                    }
-
-                    Item { visible: !!screen.save && !!screen.save.ids; width: 1; height: 12 }
-                    RowLayout {
-                        visible: !!screen.save && !!screen.save.ids
-                        width: parent.width
-                        spacing: Theme.gapSmall
-                        FilterField {
-                            id: listName
-                            Layout.fillWidth: true
-                            placeholder: Theme.say("Save its list as…")
-                            onAccepted: if (keepList.enabled) keepList.clicked()
-                        }
-                        Btn {
-                            id: keepList
-                            enabled: listName.text.trim() !== ""
-                            text: Theme.say("Keep")
-                            onClicked: {
-                                screen.listProblem = Hub.lists.keepIds(listName.text, screen.save.ids)
-                                if (screen.listProblem === "")
-                                    listName.text = ""
-                            }
-                        }
-                    }
-                    Text { visible: screen.listProblem !== ""; width: parent.width; wrapMode: Text.WordWrap; color: Theme.err; font.pixelSize: Theme.body; text: screen.listProblem }
-
-                    GroupTitle { visible: !!screen.save && !!screen.save.problem; text: Theme.say("Problem") }
-                    Text { visible: !!screen.save && !!screen.save.problem; width: parent.width; wrapMode: Text.WordWrap; color: Theme.err; font.pixelSize: Theme.body; text: screen.save ? Theme.fill("Unreadable: {}", (screen.save.problem || "")) : "" }
-
-                    GroupTitle { visible: !!screen.save && !!screen.save.ids; text: Theme.say("Differences from the current list") }
-                    Text {
-                        visible: !!screen.save && !!screen.save.ids && screen.save.missing.length === 0 && !screen.save.verdict.same
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        color: Theme.ink2
-                        font.pixelSize: Theme.body
-                        text: Theme.say("Nothing the save needs is missing.")
-                    }
-                    Text { visible: !!screen.save && screen.save.verdict.same; width: parent.width; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.body; lineHeight: 1.3; text: Theme.say("Same mods, same order as the load order") }
-
-                    GroupTitle { visible: !!screen.save && !!screen.save.otherGame; text: Theme.say("Other game version") }
-                    Text { visible: !!screen.save && !!screen.save.otherGame; width: parent.width; wrapMode: Text.WordWrap; color: Theme.warn; font.pixelSize: Theme.body; lineHeight: 1.3; text: screen.save ? Theme.fill("Saved with RimWorld {}, not the installed version", (screen.save.gameVersion || "")) : "" }
-
-                    Text {
-                        visible: !!screen.save && screen.save.missing.length > 0
-                        width: parent.width
-                        topPadding: Theme.gapTiny
-                        wrapMode: Text.WordWrap
-                        color: screen.save && screen.save.notInstalled > 0 ? Theme.err : Theme.ink2
-                        font.pixelSize: Theme.body
-                        text: screen.save ? screen.save.missingSaid : ""
-                    }
-                    Repeater {
-                        id: missing
-                        model: screen.save && screen.save.missing ? (screen.allMissing ? screen.save.missing : screen.save.missing.slice(0, 5)) : []
-                        RowLayout {
-                            id: gone
-                            required property var modelData
-                            width: side.width
-                            height: Theme.sized(22)
-                            spacing: Theme.gap
-                            Icon { name: gone.modelData.installed ? "minus" : "circle-alert"; size: 13; color: gone.modelData.installed ? Theme.ink3 : Theme.err }
-                            Text { Layout.fillWidth: true; elide: Text.ElideRight; color: gone.modelData.installed ? Theme.ink : Theme.err; font.pixelSize: Theme.body; text: gone.modelData.name }
-                            Text { color: Theme.ink3; font.pixelSize: Theme.small; text: gone.modelData.installed ? Theme.say("not active") : Theme.say("not installed") }
-                        }
-                    }
-                    Btn {
-                        visible: !!screen.save && (screen.save.missing || []).length > 5
-                        text: screen.allMissing ? Theme.say("Show five") : Theme.fill("{} more", ((screen.save ? screen.save.missing.length : 0) - 5))
-                        onClicked: screen.allMissing = !screen.allMissing
-                    }
-
-                    Text {
-                        readonly property int count: screen.save && screen.save.added ? screen.save.added.length : 0
-                        visible: count > 0
-                        width: parent.width
-                        topPadding: Theme.gap
-                        color: Theme.ink2
-                        font.pixelSize: Theme.body
-                        text: Theme.plural(count, "{} mod added since", "{} mods added since")
-                    }
-                    Repeater {
-                        id: added
-                        model: screen.save && screen.save.added ? (screen.allAdded ? screen.save.added : screen.save.added.slice(0, 5)) : []
-                        RowLayout {
-                            id: fresh
-                            required property string modelData
-                            width: side.width
-                            height: Theme.sized(22)
-                            spacing: Theme.gap
-                            Icon { name: "plus"; size: 13; color: Theme.ink3 }
-                            Text { Layout.fillWidth: true; elide: Text.ElideMiddle; textFormat: Text.PlainText; color: Theme.ink; font.pixelSize: Theme.body; text: fresh.modelData }
-                        }
-                    }
-                    Btn {
-                        visible: !!screen.save && (screen.save.added || []).length > 5
-                        text: screen.allAdded ? Theme.say("Show five") : Theme.fill("{} more", ((screen.save ? screen.save.added.length : 0) - 5))
-                        onClicked: screen.allAdded = !screen.allAdded
-                    }
-
-                    Item { visible: !!screen.save && !!screen.save.reordered; width: 1; height: 4 }
-                    Text { visible: !!screen.save && !!screen.save.reordered; width: parent.width; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.body; lineHeight: 1.3; text: Theme.say("Shared mods are in a different order now") }
-
-                    GroupTitle { text: Theme.say("Backups") }
-                    Text { width: parent.width; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.body; text: Theme.say("The newest save is copied before each launch; the last 5 are kept") }
-                    Item { width: 1; height: 6 }
-                    Btn { text: Theme.say("Open the backups folder"); onClicked: Qt.openUrlExternally(Theme.fileUrl(Hub.settings.report.dataFolder + "/save-backups")) }
                 }
+                Item { visible: !!screen.save && !!screen.save.preview; width: 1; height: Theme.gapLarge }
+                Text { width: parent.width; wrapMode: Text.WrapAnywhere; color: Theme.ink; font.pixelSize: Theme.heading; font.weight: Font.DemiBold; text: screen.save ? screen.save.name : "" }
+                Text {
+                    width: parent.width
+                    topPadding: Theme.gapHair
+                    wrapMode: Text.WordWrap
+                    color: Theme.ink2
+                    font.pixelSize: Theme.body
+                    text: screen.save ? (screen.reader.rimsaves ? Theme.fill("In {}, {}, {} MB", screen.save.folder, screen.when(screen.save.modified), screen.save.megabytes.toFixed(1)) : Theme.fill("{}, {} MB", screen.when(screen.save.modified), screen.save.megabytes.toFixed(1))) : ""
+                }
+                Flow {
+                    width: parent.width
+                    topPadding: Theme.gapMedium
+                    spacing: Theme.gapSmall
+                    Btn {
+                        visible: !!screen.save && screen.save.usable
+                        primary: !!screen.save && screen.save.verdict.breaks
+                        icon: "list"
+                        text: Theme.say("Use this save's mod list")
+                        onClicked: screen.useList(screen.save.ids)
+                    }
+                    Btn { icon: "folder-open"; text: Theme.say("Open folder"); onClicked: Qt.openUrlExternally(Theme.fileUrl(screen.save.dir)) }
+                }
+
+                GroupTitle { visible: facts.count > 0; text: Theme.say("Colony") }
+                Repeater {
+                    id: facts
+                    model: screen.save && screen.save.facts ? screen.save.facts : []
+                    RowLayout {
+                        id: fact
+                        required property var modelData
+                        width: side.column.width
+                        height: Math.max(implicitHeight, Theme.sized(22))
+                        Text { Layout.preferredWidth: Theme.sized(110); Layout.maximumWidth: side.column.width / 2; wrapMode: Text.WordWrap; color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.say(fact.modelData[0]) }
+                        Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: fact.modelData[1] }
+                    }
+                }
+
+                Item { visible: !!screen.save && !!screen.save.ids; width: 1; height: Theme.gapLarge }
+                RowLayout {
+                    visible: !!screen.save && !!screen.save.ids
+                    width: parent.width
+                    spacing: Theme.gapSmall
+                    FilterField {
+                        id: listName
+                        Layout.fillWidth: true
+                        placeholder: Theme.say("Save its list as…")
+                        onAccepted: if (keepList.enabled) keepList.clicked()
+                    }
+                    Btn {
+                        id: keepList
+                        enabled: listName.text.trim() !== ""
+                        text: Theme.say("Keep")
+                        onClicked: {
+                            screen.listProblem = Hub.lists.keepIds(listName.text, screen.save.ids)
+                            if (screen.listProblem === "")
+                                listName.text = ""
+                        }
+                    }
+                }
+                Text { visible: screen.listProblem !== ""; width: parent.width; wrapMode: Text.WordWrap; color: Theme.err; font.pixelSize: Theme.body; text: screen.listProblem }
+
+                GroupTitle { visible: !!screen.save && !!screen.save.problem; text: Theme.say("Problem") }
+                Text { visible: !!screen.save && !!screen.save.problem; width: parent.width; wrapMode: Text.WordWrap; color: Theme.err; font.pixelSize: Theme.body; text: screen.save ? Theme.fill("Unreadable: {}", (screen.save.problem || "")) : "" }
+
+                GroupTitle { visible: !!screen.save && !!screen.save.ids; text: Theme.say("Differences from the current list") }
+                Text {
+                    visible: !!screen.save && !!screen.save.ids && screen.save.missing.length === 0 && !screen.save.verdict.same
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    color: Theme.ink2
+                    font.pixelSize: Theme.body
+                    text: Theme.say("Nothing the save needs is missing.")
+                }
+                Text { visible: !!screen.save && screen.save.verdict.same; width: parent.width; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.body; lineHeight: 1.3; text: Theme.say("Same mods, same order as the load order") }
+
+                GroupTitle { visible: !!screen.save && !!screen.save.otherGame; text: Theme.say("Other game version") }
+                Text { visible: !!screen.save && !!screen.save.otherGame; width: parent.width; wrapMode: Text.WordWrap; color: Theme.warn; font.pixelSize: Theme.body; lineHeight: 1.3; text: screen.save ? Theme.fill("Saved with RimWorld {}, not the installed version", (screen.save.gameVersion || "")) : "" }
+
+                Text {
+                    visible: !!screen.save && screen.save.missing.length > 0
+                    width: parent.width
+                    topPadding: Theme.gapTiny
+                    wrapMode: Text.WordWrap
+                    color: screen.save && screen.save.notInstalled > 0 ? Theme.err : Theme.ink2
+                    font.pixelSize: Theme.body
+                    text: screen.save ? screen.save.missingSaid : ""
+                }
+                Repeater {
+                    id: missing
+                    model: screen.save && screen.save.missing ? (screen.allMissing ? screen.save.missing : screen.save.missing.slice(0, 5)) : []
+                    RowLayout {
+                        id: gone
+                        required property var modelData
+                        width: side.column.width
+                        height: Math.max(implicitHeight, Theme.sized(22))
+                        spacing: Theme.gap
+                        Icon { name: gone.modelData.installed ? "minus" : "circle-alert"; color: gone.modelData.installed ? Theme.ink3 : Theme.err }
+                        Text { Layout.fillWidth: true; elide: Text.ElideRight; color: gone.modelData.installed ? Theme.ink : Theme.err; font.pixelSize: Theme.body; text: gone.modelData.name }
+                        Text { color: Theme.ink3; font.pixelSize: Theme.small; text: gone.modelData.installed ? Theme.say("not active") : Theme.say("not installed") }
+                    }
+                }
+                Btn {
+                    visible: !!screen.save && (screen.save.missing || []).length > 5
+                    text: screen.allMissing ? Theme.say("Show five") : Theme.fill("{} more", ((screen.save ? screen.save.missing.length : 0) - 5))
+                    onClicked: screen.allMissing = !screen.allMissing
+                }
+
+                Text {
+                    readonly property int count: screen.save && screen.save.added ? screen.save.added.length : 0
+                    visible: count > 0
+                    width: parent.width
+                    topPadding: Theme.gap
+                    color: Theme.ink2
+                    font.pixelSize: Theme.body
+                    text: Theme.plural(count, "{} mod added since", "{} mods added since")
+                }
+                Repeater {
+                    id: added
+                    model: screen.save && screen.save.added ? (screen.allAdded ? screen.save.added : screen.save.added.slice(0, 5)) : []
+                    RowLayout {
+                        id: fresh
+                        required property string modelData
+                        width: side.column.width
+                        height: Math.max(implicitHeight, Theme.sized(22))
+                        spacing: Theme.gap
+                        Icon { name: "plus"; color: Theme.ink3 }
+                        Text { Layout.fillWidth: true; elide: Text.ElideMiddle; textFormat: Text.PlainText; color: Theme.ink; font.pixelSize: Theme.body; text: fresh.modelData }
+                    }
+                }
+                Btn {
+                    visible: !!screen.save && (screen.save.added || []).length > 5
+                    text: screen.allAdded ? Theme.say("Show five") : Theme.fill("{} more", ((screen.save ? screen.save.added.length : 0) - 5))
+                    onClicked: screen.allAdded = !screen.allAdded
+                }
+
+                Item { visible: !!screen.save && !!screen.save.reordered; width: 1; height: Theme.gapTiny }
+                Text { visible: !!screen.save && !!screen.save.reordered; width: parent.width; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.body; lineHeight: 1.3; text: Theme.say("Shared mods are in a different order now") }
+
+                GroupTitle { text: Theme.say("Backups") }
+                Text { width: parent.width; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.body; text: Theme.say("The newest save is copied before each launch; the last 5 are kept") }
+                Item { width: 1; height: Theme.gapSmall }
+                Btn { text: Theme.say("Open the backups folder"); onClicked: Qt.openUrlExternally(Theme.fileUrl(Hub.settings.report.dataFolder + "/save-backups")) }
             }
         }
     }

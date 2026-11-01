@@ -273,6 +273,9 @@ fn mods(app: &App, shapes: &mut Shapes) {
     shapes.add("mods.sortMoves", &order.sort_moves());
     let list = order.list(Side::Active);
     shapes.add("mods.othersThrough", &list.others_through(a, b).map(ids));
+    let same = order.same_mods_in(&order);
+    shapes.add("mods.carried", &order.carried(&same, &[a, b]));
+    shapes.add("mods.carried", &order.carried(&same, &[]));
     let ordered = list.in_load_order(a, b);
     shapes.add(
         "mods.inLoadOrder",

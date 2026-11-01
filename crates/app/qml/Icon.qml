@@ -6,7 +6,7 @@ Image {
     id: icon
     property string name
     property color color: Theme.ink2
-    property int size: 16
+    property int size: Theme.icon
 
     width: size
     height: size

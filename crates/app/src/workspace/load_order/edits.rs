@@ -27,7 +27,11 @@ impl LoadOrder {
         self.settle(app);
     }
 
-    fn put(&mut self, app: &App, into: Side, m: Mod, to: Option<usize>) {
+    fn put(&mut self, app: &App, into: Side, mut m: Mod, to: Option<usize>) {
+        if into == Side::Inactive {
+            m.category = m.filed;
+            m.held_by.clear();
+        }
         let at = self.list_mut(into).insert_in_category(m);
         match (into, to) {
             (_, Some(to)) => {
@@ -43,7 +47,7 @@ impl LoadOrder {
     }
 
     fn settle_one(&mut self, app: &App, at: usize) {
-        let loaded = app.library();
+        let loaded = self.reading(app);
         let Ok((library, _)) = &*loaded else {
             return;
         };

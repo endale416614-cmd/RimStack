@@ -12,6 +12,11 @@ Column {
     readonly property int changed: (Hub.downloads.since || {}).count || 0
     readonly property var errors: Mods.troubles.filter(trouble => trouble.error)
     readonly property var slowest: Mods.overview.slowest || []
+    readonly property real keptWidth: Math.max(keptSaves.advanceWidth, keptSnapshots.advanceWidth, keptOwn.advanceWidth, keptCommunity.advanceWidth) + Theme.gap
+    TextMetrics { id: keptSaves; font.pixelSize: Theme.body; text: Theme.say("Saves") }
+    TextMetrics { id: keptSnapshots; font: keptSaves.font; text: Theme.say("Snapshots") }
+    TextMetrics { id: keptOwn; font: keptSaves.font; text: Theme.say("Own rules") }
+    TextMetrics { id: keptCommunity; font: keptSaves.font; text: Theme.say("Community rules") }
 
     component Line: RowLayout {
         id: line
@@ -133,8 +138,8 @@ Column {
                 width: summary.width
                 height: Theme.control
                 Rectangle { width: parent.width * slow.modelData.part; height: parent.height; radius: Theme.corner; color: Theme.warn; opacity: 0.14 }
-                Text { x: 6; width: parent.width - 70; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: slow.modelData.name }
-                Text { anchors.right: parent.right; anchors.rightMargin: Theme.gapSmall; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink2; font.pixelSize: Theme.small; font.features: { "tnum": 1 }; text: slow.modelData.took }
+                Text { x: Theme.gapSmall; width: parent.width - 3 * Theme.gapSmall - took.width; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: slow.modelData.name }
+                Text { id: took; anchors.right: parent.right; anchors.rightMargin: Theme.gapSmall; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink2; font.pixelSize: Theme.small; font.features: { "tnum": 1 }; text: slow.modelData.took }
                 HoverHandler { cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: Mods.showMod(slow.modelData.modId) }
             }
@@ -162,8 +167,8 @@ Column {
                 id: about
                 required property var modelData
                 width: summary.width
-                height: Theme.sized(22)
-                Text { id: kept; width: Theme.sized(126); color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.say(about.modelData[0]) }
+                height: kept.implicitHeight + Theme.gapTiny
+                Text { id: kept; width: summary.keptWidth; color: Theme.ink2; font.pixelSize: Theme.body; text: Theme.say(about.modelData[0]) }
                 Text { x: kept.width; width: parent.width - kept.width; elide: Text.ElideRight; color: Theme.ink; font.pixelSize: Theme.body; text: about.modelData[1] }
             }
         }
