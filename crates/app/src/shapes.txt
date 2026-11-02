@@ -115,6 +115,10 @@ lists.history: list
     restore: text
     said: text
     time: number
+lists.idsInFile: object
+  ids: list
+    []: text
+  problem: text
 lists.idsInText: list
   []: text
 lists.named: list or nothing

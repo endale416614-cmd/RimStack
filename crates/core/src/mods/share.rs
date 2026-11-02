@@ -1,5 +1,8 @@
+use crate::base::error::{Error, Result};
 use crate::mods::library::Installed;
 use crate::rimworld::paths::Source;
+use crate::said;
+use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
@@ -62,11 +65,59 @@ pub fn ids_in(text: &str) -> Vec<String> {
     ids
 }
 
+/// The load order in a `ModsConfig.xml` or in a list the game saved (`.rml`).
+pub fn ids_in_xml(text: &str) -> Result<Vec<String>> {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let doc = roxmltree::Document::parse(text)
+        .map_err(|e| Error::format(said!("malformed XML: {}", e)))?;
+    let tagged = |tag: &str| {
+        doc.descendants()
+            .find(|n| n.tag_name().name().eq_ignore_ascii_case(tag))
+    };
+    let list = tagged("activeMods").or_else(|| tagged("ids"));
+    let items = list.iter().flat_map(|list| list.children());
+    let mut ids: Vec<String> = Vec::new();
+    for text in items
+        .filter(|n| n.tag_name().name().eq_ignore_ascii_case("li"))
+        .filter_map(|n| n.text())
+    {
+        let id = crate::rimworld::id::fold(text);
+        if !id.is_empty() && !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    if ids.is_empty() {
+        return Err(Error::format(said!("no list of mods in this file")));
+    }
+    Ok(ids)
+}
+
+pub fn ids_in_file(path: &Path) -> Result<Vec<String>> {
+    let text = std::fs::read_to_string(path).map_err(|e| Error::file(path, e))?;
+    ids_in_xml(&text).map_err(|e| e.of(path.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::mods::library::scan;
     use crate::rimworld::paths::ModRoot;
+
+    #[test]
+    fn a_list_file_gives_the_mods_in_its_order() {
+        let config = "\u{feff}<ModsConfigData><version>1.6</version><activeMods><li>Ludeon.RimWorld</li><li>ann.a</li><li>ann.a</li><li> </li></activeMods><knownExpansions><li>ludeon.rimworld.royalty</li></knownExpansions></ModsConfigData>";
+        assert_eq!(ids_in_xml(config).unwrap(), ["ludeon.rimworld", "ann.a"]);
+        let saved = "<savedModList><modList><ids><li>ann.a</li><li>ludeon.rimworld</li></ids><names><li>Ann's mod</li><li>Core</li></names></modList></savedModList>";
+        assert_eq!(ids_in_xml(saved).unwrap(), ["ann.a", "ludeon.rimworld"]);
+    }
+
+    #[test]
+    fn a_file_with_no_list_is_refused() {
+        assert!(ids_in_xml("not xml").is_err());
+        assert!(ids_in_xml("<ModMetaData><name>A</name></ModMetaData>").is_err());
+        assert!(ids_in_xml("<ModsConfigData><activeMods /></ModsConfigData>").is_err());
+        assert!(ids_in_file(Path::new("no such file.xml")).is_err());
+    }
 
     fn a_mod(root: &std::path::Path, folder: &str, about: &str) {
         let dir = root.join(folder).join("About");

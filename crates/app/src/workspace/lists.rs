@@ -3,9 +3,11 @@ use crate::changes::Changes;
 use rimstack_core::base::error::Error;
 use rimstack_core::base::sentence::Sentence;
 use rimstack_core::kept::{journal, lists};
+use rimstack_core::mods::share;
 use rimstack_core::rimworld::modsconfig;
 use rimstack_core::say;
 use serde::Serialize;
+use std::path::Path;
 
 const SNAPSHOTS_SHOWN: usize = 5;
 
@@ -113,6 +115,28 @@ pub struct HistoryLine {
     pub said: Sentence,
     pub restore: String,
     pub bring_back: String,
+}
+
+/// The mods a list file holds, or why it gives none.
+#[derive(Serialize, Default)]
+pub struct ListFile {
+    pub ids: Vec<String>,
+    pub problem: Sentence,
+}
+
+impl ListFile {
+    pub fn read(path: &Path) -> Self {
+        match share::ids_in_file(path) {
+            Ok(ids) => Self {
+                ids,
+                ..Self::default()
+            },
+            Err(problem) => Self {
+                problem: problem.sentence().clone(),
+                ..Self::default()
+            },
+        }
+    }
 }
 
 impl App {

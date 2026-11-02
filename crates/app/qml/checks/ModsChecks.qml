@@ -328,6 +328,9 @@ Item {
         const listed = Mods.columns.entries
         check("the column menu lists every column, the chosen ones marked", listed.length === 3 && listed[0].text.startsWith("✓"))
         check("and Load says what its times need while none are known", Mods.columns.loadTimes || listed[2].note.length > 0)
+        const listFile = Theme.fileUrl(Hub.settings.report.modsConfig)
+        check("a list file gives its mods", Hub.lists.idsInFile(listFile).ids.length > 0)
+        check("and a file that is not there says so", Hub.lists.idsInFile(listFile + ".none").problem !== "")
 
         const subRows = () => { let n = 0; for (let r = 0; r < Mods.active.rows(); r++) if (Mods.active.at(r).isSub === true) n += 1; return n }
         const before = subRows()

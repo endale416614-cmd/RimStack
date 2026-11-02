@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import RimStack.Ui
 
@@ -141,6 +142,28 @@ Popup {
                     } else {
                         listsMenu.problem = Theme.say("No mod found on the clipboard")
                     }
+                }
+            }
+        }
+
+        Text { topPadding: Theme.gapSmall; color: Theme.ink; font.pixelSize: Theme.title; font.weight: Font.DemiBold; text: Theme.say("File") }
+        Btn {
+            icon: "folder-open"
+            text: Theme.say("Use a list file…")
+            tip: Theme.say("A ModsConfig.xml or a list the game saved becomes the load order. Save writes it.")
+            onClicked: listFile.open()
+        }
+        FileDialog {
+            id: listFile
+            title: Theme.say("Use a list file…")
+            nameFilters: [Theme.fill("Mod lists ({})", "*.xml *.rml")]
+            onAccepted: {
+                const read = Hub.lists.idsInFile(selectedFile)
+                listsMenu.problem = read.problem
+                if (read.problem === "") {
+                    listsMenu.useList(read.ids)
+                    listsMenu.named("")
+                    listsMenu.close()
                 }
             }
         }

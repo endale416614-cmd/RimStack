@@ -315,6 +315,10 @@ fn lists(app: &App, shapes: &mut Shapes) {
         "lists.idsInText",
         &rimstack_core::mods::share::ids_in("ludeon.rimworld\nann.a"),
     );
+    shapes.add(
+        "lists.idsInFile",
+        &crate::workspace::lists::ListFile::read(&app.paths().mods_config().unwrap_or_default()),
+    );
     shapes.add("lists.original", &app.original_list());
 }
 

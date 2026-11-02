@@ -5,6 +5,8 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
+        include!("cxx-qt-lib/qurl.h");
+        type QUrl = cxx_qt_lib::QUrl;
     }
 
     extern "RustQt" {
@@ -45,6 +47,11 @@ pub mod qobject {
         #[cxx_name = "idsInText"]
         fn ids_in_text(self: &ListsData, text: &QString) -> QVariant;
 
+        /// `{ ids, problem }`.
+        #[qinvokable]
+        #[cxx_name = "idsInFile"]
+        fn ids_in_file(self: &ListsData, file: &QUrl) -> QVariant;
+
         #[qinvokable]
         fn original(self: &ListsData) -> QVariant;
     }
@@ -60,9 +67,10 @@ pub mod qobject {
 use crate::App;
 use crate::changes::Changes;
 use crate::qml::values::{from_qml, to_qml};
+use crate::workspace::lists::ListFile;
 use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::{QString, QVariant};
+use cxx_qt_lib::{QString, QUrl, QVariant};
 use rimstack_core::base::error::Error;
 use rimstack_core::say;
 use std::sync::Arc;
@@ -128,6 +136,11 @@ impl qobject::ListsData {
 
     fn ids_in_text(&self, text: &QString) -> QVariant {
         to_qml(&rimstack_core::mods::share::ids_in(&text.to_string()))
+    }
+
+    fn ids_in_file(&self, file: &QUrl) -> QVariant {
+        let path = file.to_local_file().unwrap_or_default().to_string();
+        to_qml(&ListFile::read(std::path::Path::new(&path)))
     }
 
     fn original(&self) -> QVariant {
