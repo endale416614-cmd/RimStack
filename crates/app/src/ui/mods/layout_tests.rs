@@ -7,6 +7,7 @@ use crate::ui::widgets::watch::{self, Seen};
 use crate::ui::{Options, install};
 use crate::workspace::load_order::Side;
 use gpui::{AppContext, Context, HeadlessAppContext, Pixels, Size, size};
+use rimstack_core::mods::list::Category;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -269,4 +270,31 @@ fn every_column_fits_in_both_lists() {
         }
     };
     fits("every column", 40, Options::default(), nothing, all, &[]);
+}
+
+/// Three Content mods under two tags, one tag split by a mod between its two.
+pub(super) fn tag_apart(mods: &mut Mods, cx: &mut Context<Mods>) {
+    let content: Vec<_> = {
+        let list = mods.list.read(cx).order.list(Side::Active).mods();
+        let in_content = list.iter().filter(|m| m.category == Category::Content);
+        in_content.filter_map(|m| m.installed).take(3).collect()
+    };
+    mods.group(vec![content[0], content[2]], "Combat", cx);
+    mods.group(vec![content[1]], "Quality of life", cx);
+}
+
+#[test]
+fn the_load_order_shown_by_group_fits() {
+    let by_group: Act = |mods, cx| {
+        tag_apart(mods, cx);
+        mods.order_active("group", cx);
+    };
+    fits(
+        "shown by group",
+        40,
+        Options::default(),
+        nothing,
+        by_group,
+        &[],
+    );
 }

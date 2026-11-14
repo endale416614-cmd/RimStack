@@ -195,7 +195,7 @@ impl LoadOrder {
             SortKey::PackageId => plain(&m.id),
             SortKey::Author => plain(&m.author),
             SortKey::Version => plain(&m.version),
-            SortKey::Name | SortKey::Load => Sentence::default(),
+            SortKey::Group | SortKey::Name | SortKey::Load => Sentence::default(),
         }
     }
 }

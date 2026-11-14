@@ -114,11 +114,12 @@ pub fn laid(room: f64, shares: &[Option<f64>], natural: &[f64], least: &[f64]) -
 
 /// `None` is the list's own order: the load order, or the inactive mods by category.
 /// A key starts the way `SortKey::starts_descending` says, turns round when asked again,
-/// and goes back to `None` the third time.
+/// and goes back to `None` the third time; one that does not turn goes back the second time.
 pub fn pressed(now: Option<(SortKey, bool)>, asked: Option<SortKey>) -> Option<(SortKey, bool)> {
     let asked = asked?;
     let first = asked.starts_descending();
     match now {
+        Some((by, _)) if by == asked && !asked.turns() => None,
         Some((by, descending)) if by == asked => (descending == first).then_some((asked, !first)),
         _ => Some((asked, first)),
     }
@@ -251,6 +252,10 @@ mod tests {
             Some((SortKey::Author, false))
         );
         assert_eq!(pressed(by_name, None), None);
+        let group = Some(SortKey::Group);
+        let gathered = pressed(by_name, group);
+        assert_eq!(gathered, Some((SortKey::Group, false)));
+        assert_eq!(pressed(gathered, group), None, "groups are shown one way");
     }
 
     #[test]
@@ -274,6 +279,7 @@ mod tests {
             None,
             Some((SortKey::Size, true)),
             Some((SortKey::PackageId, false)),
+            Some((SortKey::Group, false)),
         ] {
             assert_eq!(from_kept(&kept(order)), order);
         }

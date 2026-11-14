@@ -202,6 +202,58 @@ fn a_list_can_be_shown_by_a_column_without_changing_the_load_order() {
 }
 
 #[test]
+fn shown_by_group_each_category_and_tag_comes_once_without_changing_the_load_order() {
+    let tagged = |name: &str, category, tag: &str| {
+        let mut m = m(name, "", category);
+        m.sub = tag.into();
+        m
+    };
+    let mut list = GroupedList::new(vec![
+        tagged("A", Category::Content, "Combat"),
+        tagged("B", Category::Content, ""),
+        tagged("C", Category::Content, "Quality"),
+        tagged("D", Category::Content, "Combat"),
+        tagged("E", Category::Libraries, ""),
+        tagged("F", Category::Content, ""),
+    ]);
+    let sub = |first, count, collapsed| Row::Sub {
+        first,
+        count,
+        collapsed,
+    };
+    let at = |index| Row::Mod { index };
+    list.show_by(Some((SortKey::Group, false)));
+    assert_eq!(
+        list.rows(),
+        &[
+            header(Category::Libraries, 1, false),
+            at(4),
+            header(Category::Content, 5, false),
+            at(1),
+            at(5),
+            sub(0, 2, false),
+            at(0),
+            at(3),
+            sub(2, 1, false),
+            at(2),
+        ]
+    );
+    assert_eq!(names(&list), ["A", "B", "C", "D", "E", "F"]);
+    list.toggle_sub(0);
+    assert_eq!(list.rows()[5..7], [sub(0, 2, true), sub(2, 1, false)]);
+    list.set_filter("d");
+    assert_eq!(
+        list.rows(),
+        &[header(Category::Content, 1, false), sub(3, 1, true)]
+    );
+    list.set_filter("");
+    list.toggle(Category::Content);
+    assert_eq!(list.rows().len(), 3);
+    list.show_by(None);
+    assert_eq!(list.rows()[0], header(Category::Content, 4, true));
+}
+
+#[test]
 fn a_patches_term_narrows_to_mods_that_patch_such_a_method() {
     let mut mods = sample().mods().to_vec();
     mods[3].patched = ["verse.pawn.tick".to_string()].into();

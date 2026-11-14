@@ -65,6 +65,7 @@ fn label(key: Option<SortKey>, side: Side) -> Sentence {
     match key {
         None if side == Side::Active => say!("Load order"),
         None => say!("Category"),
+        Some(SortKey::Group) => say!("Group"),
         Some(SortKey::Name) => say!("Name"),
         Some(SortKey::Author) => say!("Author"),
         Some(SortKey::Version) => say!("Version"),
@@ -79,7 +80,7 @@ fn label(key: Option<SortKey>, side: Side) -> Sentence {
 
 fn said(order: Option<(SortKey, bool)>, side: Side) -> Sentence {
     let named = label(order.map(|(key, _)| key), side);
-    let Some((_, descending)) = order else {
+    let Some((_, descending)) = order.filter(|(key, _)| key.turns()) else {
         return named;
     };
     let way = if descending { "▾" } else { "▴" };
@@ -114,7 +115,7 @@ impl LoadOrder {
             .filter(|k| *k != SortKey::Load || timed)
             .collect();
         let inactive_keys: Vec<SortKey> = keys
-            .filter(|k| !matches!(k, SortKey::Activated | SortKey::Load))
+            .filter(|k| !matches!(k, SortKey::Group | SortKey::Activated | SortKey::Load))
             .collect();
         let active = entries(self.order_of(Side::Active), Side::Active, &active_keys);
         let inactive = entries(

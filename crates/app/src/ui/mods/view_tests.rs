@@ -60,6 +60,78 @@ fn the_view_chosen_is_kept_and_read_again_with_the_mods() {
 }
 
 #[test]
+fn the_load_order_shown_by_group_keeps_its_headings_and_is_turned_off_by_asking_again() {
+    let (_tmp, mut cx, mods) = opened_with(|_| {});
+    cx.update(|cx| {
+        mods.update(cx, |mods, cx| {
+            mods.set_headings(false, cx);
+            super::layout_tests::tag_apart(mods, cx);
+            let before = mods.list.read(cx).order.list(Side::Active).mods().to_vec();
+            mods.order_active("group", cx);
+            assert_eq!(mods.orders.active_key, "group");
+            let entry = &mods.orders.active_by["group"];
+            assert_eq!(crate::words::put(&entry.label), "Group");
+            assert_eq!(entry.then, "");
+            assert!(!mods.orders.inactive_by.contains_key("group"));
+            let order = &mods.list.read(cx).order;
+            let rows = order.rows(&crate::ui::app(cx), Side::Active);
+            assert!(rows[0].is_header, "headings are shown though turned off");
+            let tags: Vec<(String, usize, bool)> = rows
+                .iter()
+                .filter(|row| row.is_sub)
+                .map(|row| (crate::words::put(&row.name), row.count, row.again))
+                .collect();
+            assert_eq!(
+                tags,
+                [
+                    ("Combat".into(), 2, false),
+                    ("Quality of life".into(), 1, false)
+                ],
+                "a tag split in the load order is one heading"
+            );
+            assert_eq!(order.list(Side::Active).mods(), before);
+        })
+    });
+}
+
+#[test]
+fn no_key_moves_a_mod_while_the_load_order_is_shown_by_group() {
+    let (_tmp, mut cx, mods) = opened_with(|_| {});
+    let window = cx.update(|cx| cx.windows()[0]);
+    let order = |cx: &mut gpui::HeadlessAppContext| -> Vec<Option<ModId>> {
+        cx.update(|cx| {
+            let list = mods.read(cx).list.read(cx).order.list(Side::Active).mods();
+            list.iter().map(|m| m.installed).collect()
+        })
+    };
+    let nudged = |cx: &mut gpui::HeadlessAppContext, then: &'static str| {
+        cx.update(|cx| {
+            mods.update(cx, |mods, cx| {
+                super::layout_tests::tag_apart(mods, cx);
+                mods.order_active(then, cx);
+                let third = mods.list.read(cx).order.list(Side::Active).mods()[3].installed;
+                mods.select(third, true, cx);
+            })
+        });
+        cx.update_window(window, |_, window, cx| {
+            let handle = mods.read(cx).list(Side::Active).read(cx).focus_handle();
+            window.focus(&handle, cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        let before = order(cx);
+        cx.update_window(window, |_, window, cx| {
+            window.dispatch_keystroke(gpui::Keystroke::parse("alt-down").unwrap(), cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        before != order(cx)
+    };
+    assert!(!nudged(&mut cx, "group"), "shown by group, nothing moves");
+    assert!(nudged(&mut cx, ""), "in load order the same key moves it");
+}
+
+#[test]
 fn the_inactive_mods_fold_into_the_rail_the_dividers_keep_their_least_and_showing_a_mod_unfolds_them()
  {
     use super::panes::{Grip, pane_widths};

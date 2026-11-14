@@ -15,7 +15,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, WeakEntity, Window, div, prelude::FluentBuilder, px,
 };
 use rimstack_core::mods::library::ModId;
-use rimstack_core::mods::list::Category;
+use rimstack_core::mods::list::{Category, SortKey};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -387,8 +387,10 @@ impl Render for ModList {
                     buttons: !shown.previewing && !shown.picking,
                     previewing: shown.previewing,
                     headed: side == Side::Active
-                        && shown.orders.active_key.is_empty()
-                        && shown.view.headings,
+                        && match shown.orders.active_key {
+                            "" => shown.view.headings,
+                            key => key == SortKey::Group.key(),
+                        },
                     order_shown: made.columns.as_ref().is_some_and(|columns| {
                         columns
                             .fitting

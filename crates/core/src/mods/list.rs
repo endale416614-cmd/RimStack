@@ -121,6 +121,7 @@ pub struct Mod {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SortKey {
+    Group,
     Name,
     Author,
     Version,
@@ -133,7 +134,8 @@ pub enum SortKey {
 }
 
 impl SortKey {
-    pub const ALL: [SortKey; 9] = [
+    pub const ALL: [SortKey; 10] = [
+        SortKey::Group,
         SortKey::Name,
         SortKey::Author,
         SortKey::Version,
@@ -148,6 +150,7 @@ impl SortKey {
     /// Kept in the settings and handed to the window: never reworded.
     pub fn key(self) -> &'static str {
         match self {
+            SortKey::Group => "group",
             SortKey::Name => "name",
             SortKey::Author => "author",
             SortKey::Version => "version",
@@ -162,6 +165,11 @@ impl SortKey {
 
     pub fn from_key(key: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.key() == key)
+    }
+
+    /// Shown one way only: asked again, it gives back the list's own order.
+    pub fn turns(self) -> bool {
+        self != SortKey::Group
     }
 
     pub fn starts_descending(self) -> bool {
@@ -191,6 +199,7 @@ fn sorted_by(m: &Mod, key: SortKey) -> SortedBy {
 fn sort_value(m: &Mod, key: SortKey) -> Option<SortValue> {
     let text = |t: &str| (!t.is_empty()).then(|| SortValue::Text(t.to_lowercase()));
     match key {
+        SortKey::Group => text(&m.sub),
         SortKey::Name => text(&m.name),
         SortKey::Author => text(&m.author),
         SortKey::Version => text(&m.version),
@@ -584,6 +593,10 @@ impl GroupedList {
             return;
         }
         self.unmatched = !self.filter.is_empty() && !(0..self.mods.len()).any(|i| self.matches(i));
+        if let Some((SortKey::Group, _)) = self.shown_by {
+            self.rows = self.gathered();
+            return;
+        }
         if let Some((key, descending)) = self.shown_by {
             let shown: Vec<usize> = (0..self.mods.len()).filter(|&i| self.shows(i)).collect();
             let shown = sorted(shown, |&i| sorted_by(&self.mods[i], key), descending);
@@ -606,20 +619,46 @@ impl GroupedList {
                 end += 1;
             }
             let visible: Vec<usize> = (start..end).filter(|&i| self.shows(i)).collect();
-            if !visible.is_empty() {
-                let collapsed = self.collapsed.contains(&category);
-                rows.push(Row::Header {
-                    category,
-                    count: visible.len(),
-                    collapsed,
-                });
-                if !collapsed {
-                    self.push_with_subs(&mut rows, &visible);
-                }
-            }
+            self.push_category(&mut rows, category, &visible);
             start = end;
         }
         self.rows = rows;
+    }
+
+    /// Each category once and each of its tags once, wherever their mods sit: the untagged first,
+    /// then the tags in the order their first mods load, each tag's mods in load order.
+    fn gathered(&self) -> Vec<Row> {
+        let mut shown: Vec<usize> = (0..self.mods.len()).filter(|&i| self.shows(i)).collect();
+        let mut first_at: HashMap<(Category, &str), usize> = HashMap::new();
+        for &i in &shown {
+            let m = &self.mods[i];
+            first_at.entry((m.category, m.sub.as_str())).or_insert(i);
+        }
+        shown.sort_by_key(|&i| {
+            let m = &self.mods[i];
+            let tag_at = first_at[&(m.category, m.sub.as_str())];
+            (m.category, !m.sub.is_empty(), tag_at)
+        });
+        let mut rows = Vec::with_capacity(shown.len() + Category::ALL.len());
+        for run in shown.chunk_by(|&a, &b| self.mods[a].category == self.mods[b].category) {
+            self.push_category(&mut rows, self.mods[run[0]].category, run);
+        }
+        rows
+    }
+
+    fn push_category(&self, rows: &mut Vec<Row>, category: Category, visible: &[usize]) {
+        if visible.is_empty() {
+            return;
+        }
+        let collapsed = self.collapsed.contains(&category);
+        rows.push(Row::Header {
+            category,
+            count: visible.len(),
+            collapsed,
+        });
+        if !collapsed {
+            self.push_with_subs(rows, visible);
+        }
     }
 
     fn push_with_subs(&self, rows: &mut Vec<Row>, visible: &[usize]) {
