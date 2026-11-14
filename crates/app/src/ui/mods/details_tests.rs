@@ -132,3 +132,15 @@ fn keys_typed_in_the_filter_of_a_comparison_keep_no_texture() {
         "2"
     );
 }
+
+#[test]
+fn a_comparison_holds_the_watcher_and_ends_when_the_mods_are_read_again() {
+    let (_tmp, mut cx, mods) = opened_with(shared_textures);
+    cx.update(|cx| mods.update(cx, |mods, cx| mods.compare_first(cx)));
+    assert!(cx.update(|cx| mods.read(cx).held(cx)));
+    let app = cx.update(|cx| crate::ui::app(cx));
+    crate::jobs::waiting_here(|| app.rescan());
+    cx.run_until_parked();
+    assert!(cx.update(|cx| mods.read(cx).comparing.is_none()));
+    assert!(!cx.update(|cx| mods.read(cx).held(cx)));
+}

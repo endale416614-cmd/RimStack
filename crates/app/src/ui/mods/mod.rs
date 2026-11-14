@@ -259,6 +259,7 @@ impl Mods {
 
     fn heard(&mut self, changes: Changes, cx: &mut Context<Self>) {
         let app = super::app(cx);
+        self.follow_compare(changes, cx);
         let mut untouched = ROWS_UNTOUCHED;
         if changes.contains(Changes::SETTINGS) {
             let read = LoadOrder::settings_read(&app);
@@ -286,6 +287,11 @@ impl Mods {
             }
             self.sync_details(cx);
             cx.notify();
+            return;
+        }
+        if changes.contains(Changes::FOLDERS) {
+            self.edit_list(cx, |list, _| list.rescanning = true);
+            crate::jobs::spawn("folders", move || app.reread_folders());
             return;
         }
         if changes.contains(Changes::LIBRARY | Changes::LANGUAGE) {

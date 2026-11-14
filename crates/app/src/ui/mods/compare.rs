@@ -3,6 +3,7 @@ mod picture;
 mod summary;
 
 use super::Mods;
+use crate::changes::Changes;
 use crate::ui::button::Btn;
 use crate::ui::controls::Choice;
 use crate::ui::field::Field;
@@ -574,6 +575,23 @@ impl Mods {
         self.comparing = Some(view);
         self.sync_details(cx);
         cx.notify();
+    }
+
+    /// A reading of the mods voids the ids compared.
+    pub(super) fn follow_compare(&mut self, changes: Changes, cx: &mut Context<Self>) {
+        let Some(view) = self.comparing.clone() else {
+            return;
+        };
+        if changes.contains(Changes::LIBRARY) {
+            self.close_compare(cx);
+        } else if changes.contains(Changes::TEXTURES | Changes::LOAD_ORDER) {
+            view.update(cx, |view, cx| view.reload(cx));
+        }
+    }
+
+    /// What a reading of the mods would void: a change seen on disk waits for it.
+    pub fn held(&self, cx: &gpui::App) -> bool {
+        self.comparing.is_some() || self.list.read(cx).held()
     }
 
     pub(super) fn close_compare(&mut self, cx: &mut Context<Self>) {

@@ -121,7 +121,7 @@ impl ListState {
 
     /// What is under way on the load order: a change seen on disk waits for it.
     pub fn held(&self) -> bool {
-        self.order.previewing() || self.saving
+        self.order.previewing() || self.saving || self.rescanning
     }
 
     pub fn in_the_way_said(&self, errors: bool, sort_pending: bool, dirty: bool) -> Vec<String> {

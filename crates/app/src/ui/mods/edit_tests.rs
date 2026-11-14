@@ -263,3 +263,37 @@ fn a_category_folded_stays_folded_when_a_mod_leaves_the_folders() {
         "{folded:?} was unfolded"
     );
 }
+
+#[test]
+fn a_game_folder_chosen_reads_the_mods_from_it() {
+    let (tmp, mut cx, mods) = opened();
+    let gone = cx.update(|cx| {
+        let inactive = mods
+            .read(cx)
+            .list
+            .read(cx)
+            .order
+            .list(Side::Inactive)
+            .mods();
+        let gone = inactive.last().and_then(|m| m.installed).unwrap();
+        let loaded = crate::ui::app(cx).library();
+        let (library, _) = loaded.as_ref().as_ref().unwrap();
+        library.get(gone).unwrap().path.clone()
+    });
+    let before = cx.update(|cx| mods.read(cx).list.read(cx).count(Side::Inactive));
+    std::fs::remove_dir_all(gone).unwrap();
+    let game = tmp.path().join("fx/game");
+    cx.update(|cx| {
+        let app = crate::ui::app(cx);
+        app.publish(crate::changes::Changes::LIBRARY);
+        app.keep_setting("game", game.to_str().unwrap())
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let list = cx.update(|cx| mods.read(cx).list.clone());
+    cx.update(|cx| {
+        let list = list.read(cx);
+        assert!(!list.rescanning);
+        assert_eq!(list.count(Side::Inactive), before - 1);
+    });
+}

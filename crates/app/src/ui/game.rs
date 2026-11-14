@@ -118,7 +118,7 @@ impl Game {
             }
             cx.notify();
         }
-        let held = (self.held)(cx);
+        let held = (self.held)(cx) || cx.has_active_drag();
         let noticed = self.watcher.look(stamps, running, held);
         if noticed.mods {
             app.rescan_soon();
@@ -128,14 +128,29 @@ impl Game {
             (noticed.saves, Changes::SAVES),
             (noticed.log, Changes::LOGS),
             (noticed.theme, Changes::THEME),
-            (noticed.language, Changes::LANGUAGE),
         ] {
             if seen {
                 changes |= change;
             }
         }
+        if noticed.theme {
+            super::retheme(cx);
+        }
         if !changes.is_empty() {
             app.publish(changes);
+        }
+        if noticed.language {
+            let speaking = app.clone();
+            crate::jobs::run(
+                "language",
+                cx,
+                move || speaking.speak(),
+                |_, table, cx| {
+                    crate::words::show_in(crate::words::Words::of(&table));
+                    super::app(cx).publish(Changes::LANGUAGE);
+                    cx.refresh_windows();
+                },
+            );
         }
         // Never taken unasked: the game empties the file when it first starts on a new version.
         if noticed.mods_config {
@@ -201,6 +216,10 @@ mod tests {
         })
     }
 
+    fn accent(cx: &mut HeadlessAppContext) -> gpui::Hsla {
+        cx.update(|cx| cx.global::<crate::ui::theme::Theme>().colours.accent)
+    }
+
     fn look(cx: &mut HeadlessAppContext) {
         cx.advance_clock(Duration::from_secs(2));
         cx.run_until_parked();
@@ -231,5 +250,31 @@ mod tests {
             look(&mut cx);
         }
         assert!(!listed(&app, &gone));
+    }
+
+    #[test]
+    fn colours_and_texts_saved_in_the_settings_folder_show_at_once() {
+        let (_tmp, app) = crate::ui::made_up::made_up();
+        app.keep_pref("Appearance", "ownColours", "true").unwrap();
+        let app = Arc::new(app);
+        let mut cx = HeadlessAppContext::with_asset_source(
+            crate::ui::made_up::text_system(),
+            Arc::new(crate::ui::assets::Assets),
+        );
+        cx.update(|cx| crate::ui::install(app.clone(), &crate::ui::Options::default(), cx));
+        let before = accent(&mut cx);
+        let _game = cx.new(|cx| Game::new(false, false, |_| false, cx));
+        cx.run_until_parked();
+        look(&mut cx);
+        std::fs::write(app.theme_file(), r##"{"accent": "#ff0000"}"##).unwrap();
+        let language = app
+            .languages_dir()
+            .join(format!("{}.json", app.language_in_use()));
+        std::fs::create_dir_all(language.parent().unwrap()).unwrap();
+        std::fs::write(&language, r#"{"Sent to Steam": "Asked of Steam"}"#).unwrap();
+        look(&mut cx);
+        assert_ne!(accent(&mut cx), before);
+        let said = crate::words::put(&rimstack_core::say!("Sent to Steam"));
+        assert_eq!(said, "Asked of Steam");
     }
 }

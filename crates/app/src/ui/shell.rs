@@ -62,12 +62,12 @@ impl Shell {
             |shell, _, to: &Go, window, cx| shell.follow(to, window, cx),
         )
         .detach();
-        let held_by = mods.read(cx).list.downgrade();
+        let held_by = mods.downgrade();
         let game = cx.new(|cx| {
             super::game::Game::new(
                 demo,
                 options.still,
-                move |cx| held_by.upgrade().is_some_and(|list| list.read(cx).held()),
+                move |cx| held_by.upgrade().is_some_and(|mods| mods.read(cx).held(cx)),
                 cx,
             )
         });
