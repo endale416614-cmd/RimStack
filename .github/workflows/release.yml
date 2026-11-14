@@ -36,6 +36,35 @@ jobs:
           path: target/packages/*
           if-no-files-found: error
 
+  flatpak:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+      - name: uv, for the script that writes the manifest's crate sources
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+      - name: The crates in Cargo.lock, as sources
+        run: packaging/flatpak/generated-sources.sh
+      - name: The version, for the file's name
+        id: version
+        run: |
+          version=$(grep -m1 -E '^version = "' Cargo.toml | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: RimStack-${{ steps.version.outputs.version }}-x86_64.flatpak
+          manifest-path: packaging/flatpak/io.github.TheForgotten69.RimStack.yaml
+          cache-key: flatpak-builder-${{ hashFiles('Cargo.lock', 'packaging/flatpak/io.github.TheForgotten69.RimStack.yaml') }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-linux-flatpak
+          path: RimStack-*.flatpak
+          if-no-files-found: error
+
   windows:
     runs-on: windows-latest
     env:
@@ -126,7 +155,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [linux, windows, macos]
+    needs: [linux, flatpak, windows, macos]
     if: always() && contains(needs.*.result, 'success')
     runs-on: ubuntu-latest
     permissions:

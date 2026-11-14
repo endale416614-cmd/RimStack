@@ -1,4 +1,6 @@
 /target
+# Written from Cargo.lock by packaging/flatpak/generated-sources.sh
+/packaging/flatpak/generated-sources.json
 *.swp
 .superpowers/
 CLAUDE.md

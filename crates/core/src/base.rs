@@ -12,6 +12,7 @@ pub mod path_text;
 pub mod pattern;
 pub mod program;
 pub mod reread;
+pub mod sandbox;
 pub mod sentence;
 pub mod sizes;
 pub mod stamp;

@@ -89,7 +89,7 @@ Grab the file for your system from the [Releases page](https://github.com/TheFor
 |---|---|
 | Windows | Installer (`-setup.exe`) or zip |
 | macOS | dmg, Apple silicon and Intel |
-| Linux | AppImage |
+| Linux | AppImage or Flatpak |
 | Arch (AUR) | Coming soon |
 
 RimStack finds RimWorld through Steam. If it can't, it asks you for the folder.
@@ -105,7 +105,7 @@ Signing costs money, so for now Windows and macOS will warn you. The files are f
 2. Open **System Settings, Privacy & Security**, scroll down, and click **Open Anyway** next to RimStack.
 3. If macOS says the app is damaged, run this in Terminal: `xattr -dr com.apple.quarantine /Applications/RimStack.app`
 
-**Linux.** Make the AppImage executable and run it: `chmod +x RimStack-*.AppImage`.
+**Linux.** Make the AppImage executable and run it: `chmod +x RimStack-*.AppImage`. Or install the Flatpak: `flatpak install RimStack-*.flatpak`.
 
 ## Licence
 

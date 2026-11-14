@@ -8,6 +8,7 @@
  "? Keys": "",
  "@locale": "",
  "A .dds file is written beside each .png and the game loads it instead: quicker, and less memory. The .png is not changed. Steam may delete the .dds files when it updates a mod; they then show as not converted.": "",
+ "A Flatpak runs the game in a sandbox of its own, so Play asks Steam to start it outside.": "",
  "A Git checkout": "",
  "A collection: add its mods instead": "",
  "A compressed texture file the game loads instead of the PNG beside it. Up to 1.6 it loads faster, and RimStack can write one beside each PNG; from 1.7 the game compresses every texture itself.": "",

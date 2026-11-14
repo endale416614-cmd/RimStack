@@ -486,7 +486,10 @@ pub fn run(app: Arc<App>, options: Options) {
                         title: Some("RimStack".into()),
                         ..Default::default()
                     }),
-                    app_id: Some("rimstack".into()),
+                    app_id: Some(
+                        rimstack_core::base::sandbox::flatpak_id()
+                            .unwrap_or_else(|| "rimstack".to_string()),
+                    ),
                     ..Default::default()
                 },
                 |window, cx| cx.new(|cx| shell::Shell::new(&options, window, cx)),

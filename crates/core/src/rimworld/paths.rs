@@ -209,6 +209,10 @@ pub fn app_dirs(os: Os, home: &Path, env: Env) -> (PathBuf, PathBuf) {
     }
 }
 
+pub fn steam_folders(home: &Path) -> Vec<PathBuf> {
+    steam_roots(Os::running(), home, &from_environment)
+}
+
 fn steam_roots(os: Os, home: &Path, env: Env) -> Vec<PathBuf> {
     let places: Vec<PathBuf> = match os {
         Os::Linux => [

@@ -277,9 +277,13 @@ impl App {
         self.bus.listen_while(listener);
     }
 
-    /// `$XDG_DATA_HOME/RimStack` on Linux; the system's place elsewhere.
+    /// Beside RimStack's own folder; inside a Flatpak that one is the sandbox's, and
+    /// RimSort's is where it keeps it on the host.
     pub(crate) fn rimsort_dir(&self) -> PathBuf {
-        self.data_dir.with_file_name("RimSort")
+        match rimstack_core::base::sandbox::sandboxed() {
+            true => self.home.join(".local/share/RimSort"),
+            false => self.data_dir.with_file_name("RimSort"),
+        }
     }
 
     pub fn data_dir(&self) -> &Path {

@@ -47,6 +47,7 @@ pub struct SettingsReport {
     pub set_workshop: Option<String>,
     pub launch_arguments: Option<String>,
     pub launch_directly: bool,
+    pub sandboxed: bool,
     pub language: Option<String>,
     pub language_in_use: String,
     pub english: bool,

@@ -36,7 +36,7 @@ trap 'rm -f "$fresh"' EXIT
 
 system_of() {
     case "$1" in
-        *.AppImage) echo linux ;;
+        *.AppImage | *.flatpak) echo linux ;;
         *-windows-*.zip | *-setup.exe) echo windows ;;
         *-macos-*.dmg | *-macos.dmg) echo macos ;;
         *) echo other ;;
@@ -99,5 +99,5 @@ The programs are not signed yet, so Windows and macOS warn the first time. The f
 
 Windows: SmartScreen says \"Windows protected your PC\": choose More info, then Run anyway. For the zip, right-click it, choose Properties, tick Unblock, then extract. If Smart App Control is on (Windows 11), it blocks unsigned programs with no way past it except turning Smart App Control off.
 macOS: drag RimStack to Applications and open it once. Then open System Settings, Privacy & Security, scroll down and choose Open Anyway next to RimStack. If macOS says the app is damaged, run this in Terminal: \`xattr -dr com.apple.quarantine /Applications/RimStack.app\`
-Linux: make the AppImage executable (\`chmod +x\`) and run it."
+Linux: make the AppImage executable (\`chmod +x\`) and run it, or install the Flatpak with \`flatpak install RimStack-*.flatpak\`."
 gh release edit "$tag" "${kind[@]}" --title "$title" --notes "$notes"

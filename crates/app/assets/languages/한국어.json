@@ -8,6 +8,7 @@
  "? Keys": "? 단축키",
  "@locale": "ko",
  "A .dds file is written beside each .png and the game loads it instead: quicker, and less memory. The .png is not changed. Steam may delete the .dds files when it updates a mod; they then show as not converted.": "각 .png 옆에 .dds 파일을 만들어 게임이 대신 읽도록 합니다: 로딩이 빨라지고 메모리 사용량이 줄어듭니다. .png는 변경하지 않습니다. Steam이 모드를 업데이트하면서 .dds 파일을 삭제하면 미변환 상태로 표시됩니다.",
+ "A Flatpak runs the game in a sandbox of its own, so Play asks Steam to start it outside.": "Flatpak은 게임을 자체 샌드박스에서 실행하므로, 실행 버튼은 Steam에 게임을 샌드박스 밖에서 시작하도록 요청합니다.",
  "A Git checkout": "Git 저장소 복제본",
  "Asks Steam for the current version of each installed Workshop mod and of each SteamCMD download in the game's Mods folder (only their Workshop ids are sent), and Git for new commits on each checkout in the game's Mods folder and in the Workshop folder.": "설치된 각 창작마당 모드와 게임의 Mods 폴더에 있는 각 SteamCMD 다운로드의 최신 버전을 Steam에 확인합니다. 창작마당 ID만 전송합니다. 게임의 Mods 폴더와 창작마당 폴더에 있는 각 Git 복제본은 새 커밋도 확인합니다.",
  "Asks Steam for the current version of each installed Workshop mod and of each SteamCMD download in the game's Mods folder (only their Workshop ids are sent), and Git for new commits on each checkout in the game's Mods folder.": "설치된 각 창작마당 모드와 게임의 Mods 폴더에 있는 각 SteamCMD 다운로드의 최신 버전을 Steam에 확인합니다. 창작마당 ID만 전송합니다. 게임의 Mods 폴더에 있는 각 Git 복제본은 새 커밋도 확인합니다.",

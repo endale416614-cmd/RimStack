@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.TheForgotten69.RimStack</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>RimStack</name>
+  <summary>Fast mod manager for RimWorld</summary>
+
+  <description>
+    <p>
+      RimStack manages the mods of a RimWorld install. It starts in a fraction of a second
+      with thousands of mods, follows the game while it runs, and sorts by reading what is
+      inside the mods rather than only the rules their authors wrote down.
+    </p>
+    <p>What it does:</p>
+    <ul>
+      <li>Shows the load order in categories, and every move Sort makes with its reason first.</li>
+      <li>Reads each mod's compiled DLLs and XML patches for the load order rules nobody declared.</li>
+      <li>Follows Steam downloads, hand-made changes, new saves and the game's log by itself.</li>
+      <li>Writes nothing to the game before Save, and keeps the lists it replaces.</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.TheForgotten69.RimStack.desktop</launchable>
+
+  <url type="homepage">https://theforgotten69.github.io/RimStack/</url>
+  <url type="bugtracker">https://github.com/TheForgotten69/RimStack/issues</url>
+  <url type="vcs-browser">https://github.com/TheForgotten69/RimStack</url>
+  <url type="donation">https://ko-fi.com/theforgotten69</url>
+
+  <developer id="io.github.theforgotten69">
+    <name>TheForgotten69</name>
+  </developer>
+
+  <content_rating type="oars-1.1"/>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The load order in categories, with Sort ready to move six mods</caption>
+      <image type="source">https://theforgotten69.github.io/RimStack/img/mods.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="1.1.0" date="2026-10-30"/>
+  </releases>
+
+  <categories>
+    <category>Game</category>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>RimWorld</keyword>
+    <keyword>mod</keyword>
+    <keyword>load order</keyword>
+    <keyword>Steam Workshop</keyword>
+  </keywords>
+</component>

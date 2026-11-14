@@ -72,7 +72,14 @@ impl Settings {
 
         rows.push(Row::Group(0, put(&say!("Play"))));
         let options = said(&[say!("Through Steam"), say!("Directly")]);
-        rows.push(Row::Line(
+        if report.sandboxed {
+            rows.push(Row::Line(
+                Line::new(0, "launch", put(&say!("Play starts the game")))
+                    .tip(put(&say!("A Flatpak runs the game in a sandbox of its own, so Play asks Steam to start it outside.")))
+                    .held(label(theme, theme.body(), c.ink, options[0].clone())),
+            ));
+        } else {
+            rows.push(Row::Line(
             Line::new(0, "launch", put(&say!("Play starts the game")))
                 .tip(put(&say!("Directly runs the game's own program from its folder, for a copy not from Steam.")))
                 .changed(report.launch_directly, |s, _, cx| s.keep("launch", "steam", cx))
@@ -80,7 +87,8 @@ impl Settings {
                     s.keep("launch", if at == 1 { "direct" } else { "steam" }, cx)
                 })))
                 .filled(),
-        ));
+            ));
+        }
         let launch = crate::ui::field::Field {
             id: "launch-arguments",
             text: &self.fields.launch,

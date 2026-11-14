@@ -151,6 +151,7 @@ impl App {
             set_workshop: owned("workshop"),
             launch_arguments: owned("launchArguments"),
             launch_directly: settings.launch_directly(),
+            sandboxed: rimstack_core::base::sandbox::sandboxed(),
             language: owned("language"),
             english: self.language_in_use() == "English",
             language_in_use: self.language_in_use(),

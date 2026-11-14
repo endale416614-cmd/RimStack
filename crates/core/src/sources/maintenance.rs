@@ -1,5 +1,7 @@
 use super::redownload::{not_an_id, note_workshop_id};
 use crate::base::error::{Error, Result};
+use crate::base::sandbox;
+use crate::rimworld::steam_log;
 use crate::rimworld::workshop::is_id;
 use crate::said;
 
@@ -154,8 +156,13 @@ pub fn game_among(processes: &[Process], game_dir: &Path) -> bool {
     })
 }
 
-pub fn game_running(game_dir: &Path) -> bool {
-    game_among(&processes(), game_dir)
+/// Inside a Flatpak the list of processes holds only the sandbox's own, so Steam's word
+/// is taken: a game started outside Steam is not seen there.
+pub fn game_running(game_dir: &Path, home: &Path) -> bool {
+    match sandbox::sandboxed() {
+        true => steam_log::game_running(home),
+        false => game_among(&processes(), game_dir),
+    }
 }
 
 /// Splits at spaces outside quotes, and takes the quotes off. A quote left open runs to
@@ -278,11 +285,11 @@ mod tests {
                 }
             })
             .unwrap();
-        let seen = game_running(&game);
+        let seen = game_running(&game, tmp.path());
         running.kill().unwrap();
         running.wait().unwrap();
         assert!(seen);
-        assert!(!game_running(&game));
+        assert!(!game_running(&game, tmp.path()));
     }
 
     #[test]

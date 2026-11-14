@@ -13,6 +13,7 @@ pub mod paths;
 pub mod rimsaves;
 pub mod saves;
 pub mod startup;
+pub mod steam_log;
 pub mod steamapi;
 pub mod steamworks;
 pub mod workshop;
