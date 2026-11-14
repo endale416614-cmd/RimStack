@@ -122,7 +122,7 @@ impl Mods {
                     )
                     .when(!last, |d| d.child(edge(theme, side, key, columns, cx)))
                     .on_drag(ColumnHeld { side, key }, |_, _, _, cx| {
-                        gpui::AppContext::new(cx, |_| super::rows::Ghost)
+                        gpui::AppContext::new(cx, |_| crate::ui::divider::Ghost)
                     })
             })
             .collect::<Vec<_>>();

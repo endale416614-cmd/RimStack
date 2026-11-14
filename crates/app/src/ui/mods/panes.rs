@@ -1,6 +1,7 @@
 use super::Mods;
-use super::rows::{Ghost, Held};
+use super::rows::Held;
 use crate::ui::button::Btn;
+use crate::ui::divider::{Ghost, divider, nudged};
 use crate::ui::theme::{self, Theme};
 use crate::ui::widgets::measure;
 use crate::words::{count, put};
@@ -12,10 +13,6 @@ use gpui::{
     linear_color_stop, linear_gradient, prelude::FluentBuilder, px,
 };
 use rimstack_core::say;
-use std::time::Duration;
-
-/// The quiet after a divider stops before its width is kept.
-pub(super) const SETTLED: Duration = Duration::from_millis(400);
 
 #[derive(Clone, Copy, Default, PartialEq)]
 pub struct Panes {
@@ -151,10 +148,8 @@ impl Mods {
         cx: &mut Context<Self>,
     ) {
         let theme = cx.global::<Theme>().clone();
-        let by = match event.keystroke.key.as_str() {
-            "left" => -theme.sized(24.),
-            "right" => theme.sized(24.),
-            _ => return,
+        let Some(by) = nudged(&theme, event) else {
+            return;
         };
         match grip {
             Grip::Inactive => {
@@ -200,40 +195,14 @@ impl Mods {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
-        let c = &theme.colours;
-        let (id, group) = match grip {
-            Grip::Inactive => ("grip-inactive", "grip-inactive"),
-            Grip::Details => ("grip-details", "grip-details"),
+        let (id, tip) = match grip {
+            Grip::Inactive => ("grip-inactive", put(&say!("Width of the inactive mods"))),
+            Grip::Details => ("grip-details", put(&say!("Width of the details"))),
         };
-        let tip = match grip {
-            Grip::Inactive => put(&say!("Width of the inactive mods")),
-            Grip::Details => put(&say!("Width of the details")),
-        };
-        let focus = c.focus;
         let handle = self.reachable(id, cx).0;
-        let held = handle.is_focused(window);
-        div()
-            .id(id)
-            .group(group)
-            .role(gpui::Role::Splitter)
-            .track_focus(&handle)
-            .capture_any_mouse_down(|_, window, _| window.prevent_default())
-            .on_key_down(cx.listener(move |mods, event, _, cx| mods.nudge_grip(grip, event, cx)))
-            .flex()
-            .flex_none()
-            .justify_center()
-            .w(theme::HANDLE)
-            .h_full()
-            .cursor_col_resize()
+        divider(theme, id, &handle, window)
             .aria_label(tip)
-            .child(
-                div()
-                    .w(px(1.))
-                    .h_full()
-                    .bg(c.edge)
-                    .when(held, |d| d.w(px(3.)).bg(focus))
-                    .group_hover(group, move |s| s.w(px(3.)).bg(focus)),
-            )
+            .on_key_down(cx.listener(move |mods, event, _, cx| mods.nudge_grip(grip, event, cx)))
             .on_drag(grip, |_, _, _, cx| cx.new(|_| Ghost))
             .on_click(cx.listener(move |mods, event: &ClickEvent, _, cx| {
                 if event.click_count() == 2 {

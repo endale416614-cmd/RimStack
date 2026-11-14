@@ -134,6 +134,17 @@ impl App {
         self.write_prefs(prefs)
     }
 
+    /// The Downloads side pane's width in pixels as last dragged.
+    pub fn downloads_side(&self) -> Option<f32> {
+        self.prefs()
+            .number("Downloads", "side")
+            .map(|width| width as f32)
+    }
+
+    pub fn keep_downloads_side(&self, width: f32) -> Result<(), Error> {
+        self.keep_pref("Downloads", "side", &width.round().to_string())
+    }
+
     fn prefs_file(&self) -> PathBuf {
         self.settings_dir.join("RimStack.conf")
     }
@@ -264,6 +275,14 @@ mod tests {
             ),
             ("ludeon.rimworld", 2, "is:new author:x", 312.)
         );
+    }
+
+    #[test]
+    fn the_downloads_side_width_is_kept_in_whole_pixels() {
+        let (_tmp, app) = installed();
+        assert_eq!(app.downloads_side(), None);
+        app.keep_downloads_side(312.6).unwrap();
+        assert_eq!(app.downloads_side(), Some(313.));
     }
 
     #[test]

@@ -1,16 +1,17 @@
 use super::Downloads;
+use super::pane::SideDivider;
 use crate::ui::card::Card;
 use crate::ui::field::Field;
 use crate::ui::page::{page, room};
 use crate::ui::problem::problem;
 use crate::ui::theme::{self, Theme};
-use crate::ui::widgets::{Btn, Chip, TextSized, btn_width, chip_width, icon, label, measure};
+use crate::ui::widgets::{Btn, Chip, TextSized, btn_width, chip_width, icon, label};
 use crate::words::{count, put};
 use crate::workspace::downloads::{BehindShown, CheckoutShown, updates_shown};
 use crate::workspace::logs::day;
 use gpui::{
-    AnyElement, Context, FontWeight, IntoElement, ParentElement, Pixels, Render, Styled, Window,
-    canvas, div, fill, point, prelude::FluentBuilder, size,
+    AnyElement, Context, DragMoveEvent, InteractiveElement, IntoElement, ParentElement, Pixels,
+    Render, Styled, Window, canvas, div, fill, point, prelude::FluentBuilder, size,
 };
 use rimstack_core::sources::downloads::Origin;
 use rimstack_core::{say, say_n};
@@ -18,13 +19,6 @@ use rimstack_core::{say, say_n};
 const FIRST_INACTIVE: usize = 3;
 
 impl Downloads {
-    fn pane_width(theme: &Theme, window: &Window) -> Pixels {
-        let words = put(&say!("Download with SteamCMD…")) + &put(&say!("Subscribe in Steam"));
-        measure(window, theme, &words, theme.small(), FontWeight::NORMAL)
-            + theme.icon() * 2.
-            + theme::GAP_PAGE * 4.
-    }
-
     fn paste_row(&self, theme: &Theme, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
         let typed = !self.pasted.read(cx).text().trim().is_empty();
         let field = Field {
@@ -674,14 +668,17 @@ impl Render for Downloads {
         let theme = cx.global::<Theme>().clone();
         let c = theme.colours;
         let whole = window.viewport_size().width;
-        let pane = Self::pane_width(&theme, window);
-        let side = whole - pane >= pane * 2.;
-        let page_width = if side { whole - pane } else { whole } - theme::GAP_WIDE * 2.;
+        let pane = self.side_shown(&theme, window);
+        let page_width = match pane {
+            Some(pane) => whole - pane - theme::HANDLE,
+            None => whole,
+        } - theme::GAP_WIDE * 2.;
         let view = cx.entity_id();
-        let content = self.page_content(&theme, page_width, side, window, cx);
+        let content = self.page_content(&theme, page_width, pane.is_some(), window, cx);
         let paste = self.paste_row(&theme, window, cx);
         div().flex().flex_col().size_full().child(paste).child(
             div()
+                .id("downloads-panes")
                 .flex()
                 .flex_1()
                 .min_h_0()
@@ -692,29 +689,29 @@ impl Render for Downloads {
                     view,
                     content,
                 )))
-                .when(side, |d| {
+                .when_some(pane, |d, pane| {
                     let inner = pane - theme::GAP_WIDE * 2. - room(&theme);
                     let adding = self.add_mods(&theme, inner, window, cx);
-                    d.child(
-                        div()
-                            .flex_none()
-                            .w(pane)
-                            .h_full()
-                            .bg(c.panel)
-                            .border_l_1()
-                            .border_color(c.line)
-                            .child(page(
-                                "downloads-side",
-                                &self.side_paging,
-                                &theme,
-                                view,
-                                div()
-                                    .p(theme::GAP_WIDE)
-                                    .pr(theme::GAP_WIDE + room(&theme))
-                                    .child(adding),
-                            )),
+                    d.child(self.side_divider(&theme, window, cx)).child(
+                        div().flex_none().w(pane).h_full().bg(c.panel).child(page(
+                            "downloads-side",
+                            &self.side_paging,
+                            &theme,
+                            view,
+                            div()
+                                .p(theme::GAP_WIDE)
+                                .pr(theme::GAP_WIDE + room(&theme))
+                                .child(adding),
+                        )),
                     )
-                }),
+                })
+                .on_drag_move::<SideDivider>(cx.listener(
+                    |d, event: &DragMoveEvent<SideDivider>, _, cx| {
+                        let at = event.event.position.x;
+                        d.set_side(event.bounds.right() - at - theme::HANDLE / 2., cx);
+                    },
+                ))
+                .on_drop(cx.listener(|_, _: &SideDivider, _, _| {})),
         )
     }
 }

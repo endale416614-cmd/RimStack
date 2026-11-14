@@ -132,7 +132,9 @@ pub(super) fn edge(
                     mods.natural_width(side, key, cx);
                 }
             }))
-            .on_drag(ColumnEdge, |_, _, _, cx| cx.new(|_| super::rows::Ghost)),
+            .on_drag(ColumnEdge, |_, _, _, cx| {
+                cx.new(|_| crate::ui::divider::Ghost)
+            }),
         tip.into(),
     )
 }
@@ -334,11 +336,12 @@ impl Mods {
         if self.demo {
             return;
         }
-        self.view_kept.after(super::panes::SETTLED, cx, |mods, cx| {
-            if let Err(problem) = super::super::app(cx).keep_mods_view(&mods.view) {
-                notices::say(crate::words::said_of(&problem), notices::Tone::Err, cx);
-            }
-        });
+        self.view_kept
+            .after(crate::ui::divider::SETTLED, cx, |mods, cx| {
+                if let Err(problem) = super::super::app(cx).keep_mods_view(&mods.view) {
+                    notices::say(crate::words::said_of(&problem), notices::Tone::Err, cx);
+                }
+            });
     }
 
     pub(super) fn set_headings(&mut self, headings: bool, cx: &mut Context<Self>) {

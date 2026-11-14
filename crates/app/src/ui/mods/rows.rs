@@ -73,14 +73,6 @@ pub struct Held {
     pub ids: Vec<rimstack_core::mods::library::ModId>,
 }
 
-pub struct Ghost;
-
-impl gpui::Render for Ghost {
-    fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
-        div()
-    }
-}
-
 /// What follows the pointer while mods are dragged: what is held,
 /// beside the pointer. `grabbed` is where the row was taken, from the row's corner, which GPUI
 /// draws this at.

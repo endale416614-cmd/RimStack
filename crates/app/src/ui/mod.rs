@@ -6,6 +6,7 @@ pub mod command_list;
 pub mod commands;
 pub mod controls;
 pub mod counts;
+pub mod divider;
 pub mod downloads;
 pub mod field;
 pub mod find;

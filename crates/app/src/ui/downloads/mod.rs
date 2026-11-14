@@ -1,6 +1,7 @@
 mod changed;
 mod copies;
 pub mod list;
+mod pane;
 mod screen;
 mod side;
 mod tasks;
@@ -92,6 +93,9 @@ pub struct Downloads {
     folded: HashSet<&'static str>,
     paging: Paging,
     side_paging: Paging,
+    side: gpui::Pixels,
+    side_kept: Lane,
+    side_keys: gpui::FocusHandle,
     /// The changed mods' list, reached by Tab: the row its arrows are on, and where each row was
     /// last drawn, to scroll the one reached into view.
     changed_keys: gpui::FocusHandle,
@@ -163,6 +167,10 @@ impl Downloads {
         cx.observe_self(|downloads, cx| downloads.tell_listed(cx))
             .detach();
         let reduce = theme.appearance.reduce_motion;
+        let side = match demo {
+            true => None,
+            false => super::app(cx).downloads_side(),
+        };
         let mut downloads = Self {
             demo,
             needed: Rc::new(to_get(&super::order::read(cx).overview)),
@@ -193,6 +201,9 @@ impl Downloads {
             folded: HashSet::new(),
             paging: Paging::new(reduce),
             side_paging: Paging::new(reduce),
+            side: side.map_or_else(|| pane::first_side(&theme), gpui::px),
+            side_kept: Lane::default(),
+            side_keys: cx.focus_handle().tab_stop(true),
             changed_keys: cx.focus_handle().tab_stop(true),
             changed_at: 0,
             changed_drawn: Rc::default(),

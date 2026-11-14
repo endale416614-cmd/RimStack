@@ -181,8 +181,16 @@ fn opened(
 
 /// Downloads drawn again once it has read everything: the frames before showed less.
 #[cfg(target_os = "linux")]
-fn drawn(text_scale: f32, window: &dyn Fn(&Theme) -> Size<Pixels>) -> Vec<Seen> {
+fn drawn(
+    text_scale: f32,
+    window: &dyn Fn(&Theme) -> Size<Pixels>,
+    side: Option<Pixels>,
+) -> Vec<Seen> {
     let (_tmp, mut cx, shell, downloads) = opened(text_scale, window);
+    if let Some(side) = side {
+        cx.update(|cx| downloads.update(cx, |d, cx| d.set_side(side, cx)));
+        cx.run_until_parked();
+    }
     watch::start();
     cx.update(|cx| downloads.update(cx, |_, cx| cx.notify()));
     cx.update_window(shell.into(), |_, window, cx| {
@@ -241,7 +249,7 @@ fn downloads_fits_the_first_window_at_every_text_size() {
         "Downloads, first window",
         30,
         &|_| size(crate::ui::WINDOW.0, crate::ui::WINDOW.1),
-        drawn,
+        |text_scale, window| drawn(text_scale, window, None),
     );
 }
 
@@ -252,6 +260,44 @@ fn downloads_fits_the_smallest_window_at_every_text_size() {
         "Downloads, smallest window",
         30,
         &|theme| size(theme.sized(1000.), theme.sized(560.)),
-        drawn,
+        |text_scale, window| drawn(text_scale, window, None),
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn downloads_fits_the_first_window_with_its_side_pane_at_its_least() {
+    check_scene(
+        "Downloads, first window, side pane at its least",
+        30,
+        &|_| size(crate::ui::WINDOW.0, crate::ui::WINDOW.1),
+        |text_scale, window| drawn(text_scale, window, Some(px(0.))),
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_side_pane_moves_by_its_keys_and_keeps_its_width() {
+    let (_tmp, mut cx, shell, downloads) =
+        opened(1.0, &|_| size(crate::ui::WINDOW.0, crate::ui::WINDOW.1));
+    let theme = cx.update(|cx| cx.global::<Theme>().clone());
+    let left = gpui::KeyDownEvent {
+        keystroke: gpui::Keystroke::parse("left").unwrap(),
+        is_held: false,
+        prefer_character_input: false,
+    };
+    let shown = cx
+        .update_window(shell.into(), |_, window, cx| {
+            downloads.update(cx, |d, cx| {
+                d.nudge_side(&left, window, cx);
+                d.side_shown(&theme, window)
+            })
+        })
+        .unwrap();
+    let wider = super::pane::first_side(&theme) + theme.sized(24.);
+    assert_eq!(shown, Some(wider), "Left widens the pane on the right");
+    cx.advance_clock(crate::ui::divider::SETTLED * 2);
+    cx.run_until_parked();
+    let kept = cx.update(|cx| crate::ui::app(cx).downloads_side());
+    assert_eq!(kept, Some(f32::from(wider).round()));
 }

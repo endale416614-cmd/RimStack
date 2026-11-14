@@ -269,7 +269,7 @@ impl CompareView {
                                     .rounded(theme::CORNER)
                                     .bg(c.focus),
                             )
-                            .on_drag(Cutting, |_, _, _, cx| cx.new(|_| super::super::rows::Ghost)),
+                            .on_drag(Cutting, |_, _, _, cx| cx.new(|_| crate::ui::divider::Ghost)),
                     )
                     .on_drag_move::<Cutting>(cx.listener(
                         |view, event: &gpui::DragMoveEvent<Cutting>, _, cx| {
