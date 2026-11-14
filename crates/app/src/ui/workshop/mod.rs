@@ -47,7 +47,6 @@ const READS: Changes = Changes::COMMUNITY
     .or(Changes::LANGUAGE)
     .or(Changes::DOWNLOAD_LIST)
     .or(Changes::LIBRARY)
-    .or(Changes::MOD_FILES)
     .or(Changes::SETTINGS);
 
 pub struct Workshop {
@@ -189,12 +188,11 @@ impl Workshop {
         }
         if changes.contains(Changes::COMMUNITY | Changes::SOURCE | Changes::LANGUAGE) {
             self.reload(cx);
-        } else if changes.contains(Changes::DOWNLOAD_LIST | Changes::LIBRARY | Changes::MOD_FILES) {
+        } else if changes.contains(Changes::DOWNLOAD_LIST | Changes::LIBRARY) {
             self.rebadge(cx);
         }
         let details = Changes::DOWNLOAD_LIST
             | Changes::LIBRARY
-            | Changes::MOD_FILES
             | Changes::COMMUNITY
             | Changes::SETTINGS
             | Changes::SOURCE

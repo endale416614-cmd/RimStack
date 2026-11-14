@@ -301,3 +301,42 @@ fn the_side_pane_moves_by_its_keys_and_keeps_its_width() {
     let kept = cx.update(|cx| crate::ui::app(cx).downloads_side());
     assert_eq!(kept, Some(f32::from(wider).round()));
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_mod_sent_to_steam_leaves_the_updates_once_steam_has_downloaded_it() {
+    let (tmp, mut cx, _shell, downloads) =
+        opened(1.0, &|_| size(crate::ui::WINDOW.0, crate::ui::WINDOW.1));
+    let id = cx.update(|cx| {
+        downloads.update(cx, |d, _| {
+            let id = d.updates.by_steam().next().unwrap().id.clone();
+            d.asked_of_steam.insert(id.clone());
+            id
+        })
+    });
+    let look = |cx: &mut HeadlessAppContext, looks: u32| {
+        for _ in 0..looks * crate::ui::game::HIDDEN_LOOKS_ONE_IN {
+            cx.advance_clock(Duration::from_secs(2));
+            cx.run_until_parked();
+        }
+    };
+    look(&mut cx, 1);
+    let record = tmp.path().join("fx/steam/workshop/appworkshop_294100.acf");
+    let text = std::fs::read_to_string(&record).unwrap();
+    let at = text.find(&format!("\"{id}\"")).unwrap();
+    let field = at + text[at..].find("\"timeupdated\"").unwrap();
+    let value = field + text[field..].find('\n').unwrap();
+    let now = crate::workspace::now_secs();
+    let rewritten = format!(
+        "{}\"timeupdated\"\t\t\"{now}\"{}",
+        &text[..field],
+        &text[value..]
+    );
+    std::fs::write(&record, rewritten).unwrap();
+    look(&mut cx, 3);
+    cx.update(|cx| {
+        let d = downloads.read(cx);
+        assert!(!d.asked_of_steam.contains(&id), "still sent to Steam");
+        assert!(d.updates.by_steam().all(|row| row.id != id));
+    });
+}

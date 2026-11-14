@@ -72,8 +72,7 @@ const ROWS_UNTOUCHED: Changes = Changes::LOGS
     .or(Changes::THEME)
     .or(Changes::DOWNLOAD_LIST)
     .or(Changes::KEY)
-    .or(Changes::SOURCE)
-    .or(Changes::MOD_FILES);
+    .or(Changes::SOURCE);
 
 type AfterDrawn = Box<dyn FnMut(&mut Mods, &mut gpui::Window, &mut Context<Mods>) -> bool>;
 

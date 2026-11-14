@@ -31,7 +31,7 @@ fn every(demo: bool, still: bool) -> Option<Duration> {
 /// While the window shows nothing, one look in this many. Not none: gpui-fast reports a window
 /// wholly behind another as it reports a minimised one, and behind the running game RimStack
 /// must still see it start and stop.
-const HIDDEN_LOOKS_ONE_IN: u32 = 5;
+pub(crate) const HIDDEN_LOOKS_ONE_IN: u32 = 5;
 
 impl Game {
     pub fn new(
@@ -120,9 +120,11 @@ impl Game {
         }
         let held = (self.held)(cx);
         let noticed = self.watcher.look(stamps, running, held);
+        if noticed.mods {
+            app.rescan_soon();
+        }
         let mut changes = Changes::NONE;
         for (seen, change) in [
-            (noticed.mods, Changes::MOD_FILES),
             (noticed.saves, Changes::SAVES),
             (noticed.log, Changes::LOGS),
             (noticed.theme, Changes::THEME),
@@ -182,5 +184,52 @@ impl Game {
             },
         );
         cx.notify();
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use gpui::{AppContext, HeadlessAppContext};
+    use std::path::Path;
+    use std::sync::Arc;
+
+    fn listed(app: &crate::App, folder: &Path) -> bool {
+        crate::jobs::waiting_here(|| match &*app.library() {
+            Ok((library, _)) => library.installed.iter().any(|m| m.path == folder),
+            Err(_) => false,
+        })
+    }
+
+    fn look(cx: &mut HeadlessAppContext) {
+        cx.advance_clock(Duration::from_secs(2));
+        cx.run_until_parked();
+    }
+
+    #[test]
+    fn a_mod_folder_removed_outside_is_read_away_once_the_folder_is_quiet() {
+        let (tmp, app) = crate::ui::made_up::made_up();
+        let app = Arc::new(app);
+        let mut cx = HeadlessAppContext::with_asset_source(
+            crate::ui::made_up::text_system(),
+            Arc::new(crate::ui::assets::Assets),
+        );
+        cx.update(|cx| crate::ui::install(app.clone(), &crate::ui::Options::default(), cx));
+        let mods = tmp.path().join("fx/game/Mods");
+        let gone = std::fs::read_dir(&mods)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert!(listed(&app, &gone));
+        let _game = cx.new(|cx| Game::new(false, false, |_| false, cx));
+        cx.run_until_parked();
+        look(&mut cx);
+        std::fs::remove_dir_all(&gone).unwrap();
+        for _ in 0..4 {
+            look(&mut cx);
+        }
+        assert!(!listed(&app, &gone));
     }
 }

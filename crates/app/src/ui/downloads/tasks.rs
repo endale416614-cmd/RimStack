@@ -2,7 +2,6 @@
 //! would write the same SteamCMD folder. And the change notes, read from the Workshop.
 
 use super::{Downloads, Waiting};
-use crate::changes::Changes;
 use crate::ui::prompt::{self, Answer, Line, Question};
 use crate::words::put;
 use crate::workspace::changed::{MOST_ASKED, MOST_NOTES, NotesState, notes_asked};
@@ -52,7 +51,7 @@ impl Downloads {
     fn finish(&mut self, done: Done, cx: &mut Context<Self>) {
         let app = crate::ui::app(cx);
         if done.wrote {
-            app.publish(Changes::MOD_FILES);
+            app.rescan_soon();
         }
         self.tasks.note = match done.note {
             Ok(did) => {
