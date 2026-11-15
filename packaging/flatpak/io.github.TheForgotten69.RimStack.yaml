@@ -45,38 +45,10 @@ finish-args:
   - --filesystem=/mnt
 
 modules:
-  - name: rimstack
-    buildsystem: simple
-    build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin
-      env:
-        CARGO_HOME: /run/build/rimstack/cargo
-    build-commands:
-      # Flatpak mounts the extension over this folder; the app makes it.
-      - mkdir -p /app/lib/i386-linux-gnu
-      - cargo --offline fetch --manifest-path Cargo.toml
-      - cargo --offline build --profile dist -p rimstack-app
-      - install -Dm755 target/dist/rimstack /app/bin/rimstack
-      - install -Dm644 crates/app/assets/rimstack.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
-      - install -Dm644 crates/app/assets/rimstack.desktop /app/share/applications/$FLATPAK_ID.desktop
-      # Flatpak shows the icon and the name it files the application under.
-      - desktop-file-edit --set-key=Icon --set-value=$FLATPAK_ID /app/share/applications/$FLATPAK_ID.desktop
-      - desktop-file-edit --set-key=StartupWMClass --set-value=$FLATPAK_ID /app/share/applications/$FLATPAK_ID.desktop
-      # The release is the version Cargo.toml names, so the two cannot disagree.
-      - packaging/flatpak/metainfo-version.py packaging/flatpak/$FLATPAK_ID.metainfo.xml $FLATPAK_ID.metainfo.xml
-      - install -Dm644 $FLATPAK_ID.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
-    sources:
-      - generated-sources.json
-      # This repository. `target` is the build's own; the .git folder gives the
-      # program the commit it was built from.
-      - type: dir
-        path: ../../
-        skip:
-          - target
-
   # The runtime has no git, and a program may not run the host's: RimStack runs
   # git to read a mod's own checkout, and refuses the ones that are more than a
-  # clone. Placed after the app, which does not need it while building.
+  # clone. Built first: flatpak-builder keeps a module only while every module
+  # before it is unchanged, and the app changes with every commit.
   - name: git
     buildsystem: simple
     build-commands:
@@ -96,3 +68,35 @@ modules:
           type: anitya
           project-id: 5350
           url-template: https://www.kernel.org/pub/software/scm/git/git-$version.tar.xz
+
+  - name: rimstack
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/rimstack/cargo
+        # The profile the other packages ship.
+        CARGO_PROFILE_RELEASE_INCREMENTAL: 'false'
+        CARGO_PROFILE_RELEASE_STRIP: 'true'
+    build-commands:
+      # Flatpak mounts the extension over this folder; the app makes it.
+      - mkdir -p /app/lib/i386-linux-gnu
+      - cargo --offline fetch --manifest-path Cargo.toml
+      - cargo --offline build --release -p rimstack-app
+      - install -Dm755 target/release/rimstack /app/bin/rimstack
+      - install -Dm644 crates/app/assets/rimstack.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+      - install -Dm644 crates/app/assets/rimstack.desktop /app/share/applications/$FLATPAK_ID.desktop
+      # Flatpak shows the icon and the name it files the application under.
+      - desktop-file-edit --set-key=Icon --set-value=$FLATPAK_ID /app/share/applications/$FLATPAK_ID.desktop
+      - desktop-file-edit --set-key=StartupWMClass --set-value=$FLATPAK_ID /app/share/applications/$FLATPAK_ID.desktop
+      # The release is the version Cargo.toml names, so the two cannot disagree.
+      - packaging/flatpak/metainfo-version.py packaging/flatpak/$FLATPAK_ID.metainfo.xml $FLATPAK_ID.metainfo.xml
+      - install -Dm644 $FLATPAK_ID.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
+    sources:
+      - generated-sources.json
+      # This repository. `target` is the build's own; the .git folder gives the
+      # program the commit it was built from.
+      - type: dir
+        path: ../../
+        skip:
+          - target
