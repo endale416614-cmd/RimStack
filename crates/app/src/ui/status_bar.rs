@@ -99,6 +99,16 @@ impl Shell {
                     .children(tray)
                     .children(release)
                     .child(
+                        Btn::new("support", "")
+                            .icon("heart")
+                            .icon_tone(c.err)
+                            .height(height)
+                            .tip(put(&say!("Support RimStack")))
+                            .pops(|over, window, cx| {
+                                super::menu::open_above(over, super::support::menu(), window, cx)
+                            }),
+                    )
+                    .child(
                         Btn::new("keys", put(&say!("? Keys")))
                             .height(height)
                             .spoken(put(&say!("Keyboard shortcuts (F1)")))

@@ -152,6 +152,11 @@ pub fn open_buttons_under_end(
     );
 }
 
+pub fn open_above(over: Bounds<Pixels>, entries: Vec<Entry>, window: &mut Window, cx: &mut App) {
+    let at = point(over.left(), over.top() - theme::GAP_TINY);
+    show(at, gpui::Anchor::BottomLeft, None, entries, window, cx);
+}
+
 /// Opens `entries` with their top left corner at `at`, kept in the window.
 pub fn open_at(at: Point<Pixels>, entries: Vec<Entry>, window: &mut Window, cx: &mut App) {
     show(at, gpui::Anchor::TopLeft, None, entries, window, cx);
@@ -280,7 +285,10 @@ impl Menu {
                 return div()
                     .w_full()
                     .when(self.buttons.is_none(), |d| {
-                        d.px(theme::GAP_MEDIUM).py(theme::GAP_TINY)
+                        let room = measure(window, theme, "n", theme.caption(), FontWeight::NORMAL);
+                        d.px(theme::GAP_MEDIUM)
+                            .py(theme::GAP_TINY)
+                            .max_w(room * 40. + theme::GAP_MEDIUM * 2.)
                     })
                     .spaced_text(theme, theme.caption(), 1.25)
                     .text_color(c.ink3)

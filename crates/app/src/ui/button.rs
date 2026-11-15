@@ -17,6 +17,7 @@ pub struct Btn {
     id: ElementId,
     text: SharedString,
     icon: Option<&'static str>,
+    icon_tone: Option<Hsla>,
     primary: bool,
     large: bool,
     menu: bool,
@@ -37,6 +38,7 @@ impl Btn {
             id: id.into(),
             text: text.into(),
             icon: None,
+            icon_tone: None,
             primary: false,
             large: false,
             menu: false,
@@ -65,6 +67,11 @@ impl Btn {
 
     pub fn icon(mut self, name: &'static str) -> Self {
         self.icon = Some(name);
+        self
+    }
+
+    pub fn icon_tone(mut self, tone: Hsla) -> Self {
+        self.icon_tone = Some(tone);
         self
     }
 
@@ -220,7 +227,9 @@ impl RenderOnce for Btn {
                     .items_center()
                     .gap(theme::GAP_SMALL)
                     .when(!self.enabled, |d| d.opacity(0.5))
-                    .when_some(self.icon, |d, name| d.child(icon(name, theme.icon(), ink)))
+                    .when_some(self.icon, |d, name| {
+                        d.child(icon(name, theme.icon(), self.icon_tone.unwrap_or(ink)))
+                    })
                     .when(!self.text.is_empty(), |d| {
                         let shown = weighted(window, theme, self.text.clone(), size, weight);
                         d.child(watched(

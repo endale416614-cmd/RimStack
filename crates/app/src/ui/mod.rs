@@ -42,6 +42,7 @@ pub mod settings;
 pub mod shell;
 pub mod status_bar;
 pub mod status_note;
+pub mod support;
 pub mod text_field;
 pub mod textures;
 pub mod theme;

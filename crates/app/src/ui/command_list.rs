@@ -174,6 +174,15 @@ impl Shell {
             none.clone(),
             Rc::new(|_, _, cx| cx.open_url(ISSUES)),
         );
+        for (name, address) in super::support::links() {
+            push(
+                true,
+                name,
+                &help,
+                none.clone(),
+                Rc::new(move |_, _, cx| cx.open_url(address)),
+            );
+        }
         push(
             !demo && !self.hunt.active,
             say!("Find the broken mod"),

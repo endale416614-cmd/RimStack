@@ -34,6 +34,7 @@ icons![
     "gamepad-2",
     "git-branch",
     "hard-drive",
+    "heart",
     "history",
     "image",
     "info",

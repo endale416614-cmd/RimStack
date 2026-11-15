@@ -469,6 +469,18 @@ impl Settings {
                 .filled(),
         ));
         rows.push(Row::Line(
+            Line::new(4, "support", put(&say!("Support RimStack")))
+                .held(
+                    Btn::new("support-links", put(&say!("Discord and donations")))
+                        .icon("heart")
+                        .icon_tone(c.err)
+                        .opens(|below, window, cx| {
+                            crate::ui::menu::open(below, crate::ui::support::menu(), window, cx)
+                        }),
+                )
+                .filled(),
+        ));
+        rows.push(Row::Line(
             Line::new(4, "licence", put(&say!("Licence"))).held(words(
                 theme,
                 c.ink,

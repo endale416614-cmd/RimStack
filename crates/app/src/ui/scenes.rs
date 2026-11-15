@@ -125,6 +125,15 @@ fn open(shell: &mut Shell, open: Option<&str>, window: &mut Window, cx: &mut Con
         Some("view") => open_menu(&shell.sections.mods, Menu::View, cx),
         Some("order") => open_menu(&shell.sections.mods, Menu::InactiveOrder, cx),
         Some("ask") => ask(window, cx),
+        Some("support") => {
+            let theme = cx.global::<super::theme::Theme>().clone();
+            let room = window.viewport_size();
+            let heart = gpui::Bounds::new(
+                gpui::point(room.width * 0.6, room.height - theme.strip()),
+                gpui::Size::default(),
+            );
+            super::menu::open_above(heart, super::support::menu(), window, cx);
+        }
         _ => {}
     }
 }
