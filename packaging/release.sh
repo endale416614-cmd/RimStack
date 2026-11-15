@@ -36,7 +36,8 @@ trap 'rm -f "$fresh"' EXIT
 
 system_of() {
     case "$1" in
-        *.AppImage | *.flatpak) echo linux ;;
+        *.AppImage) echo linux ;;
+        *.flatpak) echo flatpak ;;
         *-windows-*.zip | *-setup.exe) echo windows ;;
         *-macos-*.dmg | *-macos.dmg) echo macos ;;
         *) echo other ;;

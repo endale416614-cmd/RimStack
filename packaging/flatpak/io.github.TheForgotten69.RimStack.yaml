@@ -1,21 +1,13 @@
-# RimStack as a Flatpak: built from the source in this repository on the
-# freedesktop runtime, so it runs on any distribution with Flatpak, on the
-# runtime's own libraries.
+# RimStack as a Flatpak on the freedesktop runtime, so it runs on any
+# distribution with Flatpak, on the runtime's own libraries.
 #
-#   flatpak-builder --user --install --force-clean build-dir \
-#       packaging/flatpak/io.github.TheForgotten69.RimStack.yaml
-#
-# `just flatpak` builds the .flatpak file a release gets.
-#
-# generated-sources.json holds every crate in Cargo.lock, so the build needs no
-# network. It is not kept: packaging/flatpak/generated-sources.sh writes it from
-# Cargo.lock, and this file's build reads it from there.
+# The program is built beside it and placed at target/flatpak/rimstack: by the
+# release's Linux job, on a glibc no newer than the runtime's, or by
+# `just flatpak`, which builds the .flatpak file a release gets.
 app-id: io.github.TheForgotten69.RimStack
 runtime: org.freedesktop.Platform
 runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.rust-stable
 command: rimstack
 
 # SteamCMD has no 64-bit build, so it needs the runtime's 32-bit libraries,
@@ -71,19 +63,10 @@ modules:
 
   - name: rimstack
     buildsystem: simple
-    build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin
-      env:
-        CARGO_HOME: /run/build/rimstack/cargo
-        # The profile the other packages ship.
-        CARGO_PROFILE_RELEASE_INCREMENTAL: 'false'
-        CARGO_PROFILE_RELEASE_STRIP: 'true'
     build-commands:
       # Flatpak mounts the extension over this folder; the app makes it.
       - mkdir -p /app/lib/i386-linux-gnu
-      - cargo --offline fetch --manifest-path Cargo.toml
-      - cargo --offline build --release -p rimstack-app
-      - install -Dm755 target/release/rimstack /app/bin/rimstack
+      - install -Dm755 rimstack-program /app/bin/rimstack
       - install -Dm644 crates/app/assets/rimstack.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
       - install -Dm644 crates/app/assets/rimstack.desktop /app/share/applications/$FLATPAK_ID.desktop
       # Flatpak shows the icon and the name it files the application under.
@@ -93,10 +76,12 @@ modules:
       - packaging/flatpak/metainfo-version.py packaging/flatpak/$FLATPAK_ID.metainfo.xml $FLATPAK_ID.metainfo.xml
       - install -Dm644 $FLATPAK_ID.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
     sources:
-      - generated-sources.json
-      # This repository. `target` is the build's own; the .git folder gives the
-      # program the commit it was built from.
+      - type: file
+        path: ../../target/flatpak/rimstack
+        dest-filename: rimstack-program
       - type: dir
         path: ../../
         skip:
           - target
+          - .git
+          - .flatpak-builder

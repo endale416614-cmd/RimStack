@@ -11,5 +11,4 @@ runs:
           libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libfontconfig-dev file lld
     - uses: Swatinem/rust-cache@v2
       with:
-        cache-on-failure: true
         save-if: ${{ github.ref == 'refs/heads/main' }}

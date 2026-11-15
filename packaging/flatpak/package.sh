@@ -11,8 +11,8 @@ repo=$build/repo
 out=target/packages
 mkdir -p "$repo" "$out"
 
-# The crates, as sources: the build then needs no network.
-packaging/flatpak/generated-sources.sh
+cargo build --release -p rimstack-app
+install -Dm755 target/release/rimstack target/flatpak/rimstack
 
 flatpak-builder \
     --user \
