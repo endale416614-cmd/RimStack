@@ -579,7 +579,12 @@ impl App {
         use rimstack_core::base::watch::{changed_at, newest};
         let paths = self.paths();
         let (record, local) = (paths.steam_record(), paths.local_mods());
-        let mods = [paths.workshop.clone(), record, local];
+        // Loading Progress writes the load times the lists show as the game finishes loading.
+        let report = paths
+            .config
+            .as_ref()
+            .map(|c| c.join("StartupImpactData.xml"));
+        let mods = [paths.workshop.clone(), record, local, report];
         // A checkout pulled outside RimStack moves HEAD; a mod changes in its folder or About.xml.
         let inside: Vec<PathBuf> = match &*self.library() {
             Ok((library, _)) => {

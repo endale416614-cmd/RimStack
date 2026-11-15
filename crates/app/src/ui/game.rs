@@ -253,6 +253,34 @@ mod tests {
     }
 
     #[test]
+    fn load_times_the_game_writes_while_the_window_is_open_are_read() {
+        let (_tmp, app) = crate::ui::made_up::made_up();
+        let app = Arc::new(app);
+        let mut cx = HeadlessAppContext::with_asset_source(
+            crate::ui::made_up::text_system(),
+            Arc::new(crate::ui::assets::Assets),
+        );
+        cx.update(|cx| crate::ui::install(app.clone(), &crate::ui::Options::default(), cx));
+        let took = || crate::jobs::waiting_here(|| app.startup().of("Ludeon.RimWorld"));
+        assert_eq!(took(), None);
+        let _game = cx.new(|cx| Game::new(false, false, |_| false, cx));
+        cx.run_until_parked();
+        look(&mut cx);
+        let config = app.paths().config.clone().unwrap();
+        std::fs::write(
+            config.join("StartupImpactData.xml"),
+            "<StartupImpactSession><sessionData><loadingTime>4000</loadingTime><mods>\
+             <li><modPackageId>Ludeon.RimWorld</modPackageId><totalImpact>400</totalImpact></li>\
+             </mods></sessionData></StartupImpactSession>",
+        )
+        .unwrap();
+        for _ in 0..3 {
+            look(&mut cx);
+        }
+        assert_eq!(took(), Some(400.0));
+    }
+
+    #[test]
     fn colours_and_texts_saved_in_the_settings_folder_show_at_once() {
         let (_tmp, app) = crate::ui::made_up::made_up();
         app.keep_pref("Appearance", "ownColours", "true").unwrap();
