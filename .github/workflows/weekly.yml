@@ -17,6 +17,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      checks: write
     steps:
       - uses: actions/checkout@v7
       - uses: rustsec/audit-check@v2
