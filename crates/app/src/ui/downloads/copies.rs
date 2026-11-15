@@ -141,61 +141,73 @@ impl Downloads {
         shown
     }
 
-    pub(super) fn copies_cards(
+    pub(super) fn untracked_card(
         &self,
         theme: &Theme,
         width: Pixels,
         window: &Window,
         cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
+    ) -> Option<AnyElement> {
         let c = &theme.colours;
-        let mut cards = Vec::new();
         let untracked = &self.updates.untracked;
-        if !untracked.is_empty() {
-            let again = put(&say!("Download again"));
-            let action = Btn::new("track-copies", again.clone())
-                .tip(put(&say!(
-                    "Their version is known from then on, so Check now finds their updates."
+        if untracked.is_empty() {
+            return None;
+        }
+        let again = put(&say!("Download again"));
+        let action = Btn::new("track-copies", again.clone())
+            .tip(put(&say!(
+                "Their version is known from then on, so Check now finds their updates."
+            )))
+            .icon("download")
+            .enabled(self.steamcmd && !self.tasks.running)
+            .on_click(cx.listener(|d, _, window, cx| d.ask_track(window, cx)));
+        let mut body = vec![
+            div()
+                .sized_text(theme, theme.small())
+                .text_color(c.ink3)
+                .child(put(&say!(
+                    "These mods in the game's Mods folder were not downloaded by RimStack, so which version they are is not known."
                 )))
-                .icon("download")
-                .enabled(self.steamcmd && !self.tasks.running)
-                .on_click(cx.listener(|d, _, window, cx| d.ask_track(window, cx)));
-            let mut body = vec![
-                div()
-                    .sized_text(theme, theme.small())
-                    .text_color(c.ink3)
-                    .child(put(&say!(
-                        "These mods in the game's Mods folder were not downloaded by RimStack, so which version they are is not known."
-                    )))
-                    .into_any_element(),
-            ];
-            body.extend(self.named_rows(theme, "untracked", untracked, cx));
-            let card = Card::new("untracked", put(&say!("Version not known")))
-                .note(count(untracked.len()))
-                .actions(
-                    vec![action.into_any_element()],
-                    btn_width(window, theme, &again, true, false),
-                )
-                .body(body);
-            cards.push(card.render(theme, Some((width, window))).into_any_element());
-        }
+                .into_any_element(),
+        ];
+        body.extend(self.named_rows(theme, "untracked", untracked, cx));
+        let fold = cx.listener(|d, _, _, cx| d.fold("downloads-untracked", cx));
+        let card = Card::new("untracked", put(&say!("Version not known")))
+            .note(count(untracked.len()))
+            .folds(self.is_folded("downloads-untracked", false), fold)
+            .actions(
+                vec![action.into_any_element()],
+                btn_width(window, theme, &again, true, false),
+            )
+            .body(body);
+        Some(card.render(theme, Some((width, window))).into_any_element())
+    }
+
+    pub(super) fn unlisted_card(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let c = &theme.colours;
         let unanswered = &self.updates.unanswered;
-        if !unanswered.is_empty() {
-            let mut body = vec![
-                div()
-                    .sized_text(theme, theme.small())
-                    .text_color(c.ink3)
-                    .child(put(&say!(
-                        "Their authors made them unlisted: their Workshop pages open from a link, but Steam does not tell RimStack whether they have updates."
-                    )))
-                    .into_any_element(),
-            ];
-            body.extend(self.named_rows(theme, "unanswered", unanswered, cx));
-            let card = Card::new("unanswered", put(&say!("Unlisted on the Workshop")))
-                .note(count(unanswered.len()))
-                .body(body);
-            cards.push(card.render(theme, None).into_any_element());
+        if unanswered.is_empty() {
+            return None;
         }
-        cards
+        let mut body = vec![
+            div()
+                .sized_text(theme, theme.small())
+                .text_color(c.ink3)
+                .child(put(&say!(
+                    "Their authors made them unlisted: their Workshop pages open from a link, but Steam does not tell RimStack whether they have updates."
+                )))
+                .into_any_element(),
+        ];
+        body.extend(self.named_rows(theme, "unanswered", unanswered, cx));
+        let fold = cx.listener(|d, _, _, cx| d.fold("downloads-unlisted", cx));
+        let card = Card::new("unanswered", put(&say!("Unlisted on the Workshop")))
+            .note(count(unanswered.len()))
+            .folds(self.is_folded("downloads-unlisted", false), fold)
+            .body(body);
+        Some(card.render(theme, None).into_any_element())
     }
 }

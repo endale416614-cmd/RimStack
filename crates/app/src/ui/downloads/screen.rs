@@ -350,9 +350,11 @@ impl Downloads {
                     .enumerate()
                     .map(|(at, row)| self.checkout_row(theme, ("failed", at), width, row, cx)),
             );
+            let fold = cx.listener(|d, _, _, cx| d.fold("downloads-needs", cx));
             let card = Card::new("needs-you", put(&say!("Needs you")))
                 .tone(c.warn)
                 .note(count(needs))
+                .folds(self.is_folded("downloads-needs", false), fold)
                 .body(body);
             cards.push(card.render(theme, None).into_any_element());
         }
@@ -451,13 +453,15 @@ impl Downloads {
                     ));
                 }
             }
+            let fold = cx.listener(|d, _, _, cx| d.fold("downloads-newer", cx));
             let card = Card::new("newer", put(&say!("Newer versions")))
                 .note(note)
+                .folds(self.is_folded("downloads-newer", false), fold)
                 .actions(actions.0, actions.1)
                 .body(body);
             cards.push(card.render(theme, Some((width, window))).into_any_element());
         }
-        cards.extend(self.copies_cards(theme, width, window, cx));
+        cards.extend(self.untracked_card(theme, width, window, cx));
         cards.extend(self.changed_card(theme, width, window, cx));
         if !shown.checkouts.is_empty() {
             let rows: Vec<AnyElement> = shown
@@ -474,6 +478,7 @@ impl Downloads {
             cards.push(card.render(theme, None).into_any_element());
         }
         cards.extend(self.replacements_card(theme, width, window, cx));
+        cards.extend(self.unlisted_card(theme, cx));
         div()
             .flex()
             .flex_col()
@@ -596,7 +601,9 @@ impl Downloads {
                 )
                 .into_any_element()
         });
+        let fold = cx.listener(|d, _, _, cx| d.fold("downloads-replacements", cx));
         let card = Card::new("replacements", title)
+            .folds(self.is_folded("downloads-replacements", false), fold)
             .actions(actions.0, actions.1)
             .body(rows.collect());
         Some(card.render(theme, Some((width, window))).into_any_element())

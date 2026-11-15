@@ -202,9 +202,11 @@ impl Downloads {
         } else {
             String::new()
         };
+        let fold = cx.listener(|d, _, _, cx| d.fold("downloads-looked-up", cx));
         Some(
             Card::new("looked-up", put(&say!("Look up")))
                 .note(note)
+                .folds(self.is_folded("downloads-looked-up", false), fold)
                 .body(body)
                 .render(theme, None)
                 .into_any_element(),
@@ -220,8 +222,10 @@ impl Downloads {
     ) -> gpui::Div {
         let c = &theme.colours;
         let list_note = self.list.size_said.as_ref().map(put).unwrap_or_default();
+        let fold = cx.listener(|d, _, _, cx| d.fold("downloads-list", cx));
         let list = Card::new("download-list", put(&say!("Download list")))
             .note(list_note)
+            .folds(self.is_folded("downloads-list", false), fold)
             .body(vec![self.list_view.clone().into_any_element()]);
         let installed = put(&say!("Installed"));
         let steamcmd_actions = match self.steamcmd {
