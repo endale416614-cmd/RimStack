@@ -15,7 +15,7 @@ pub struct LastCheck {
     pub now: BTreeMap<String, u64>,
     /// Each one's `hcontent_file`, where Steam gave it; a check before RimStack kept them has none.
     pub manifests: BTreeMap<String, u64>,
-    /// Asked and not answered: removed from the Workshop, or made private.
+    /// Asked and not answered: unlisted by their authors, which Steam answers only to a login.
     pub unanswered: BTreeSet<String>,
     pub checkouts: BTreeMap<String, Remote>,
 }

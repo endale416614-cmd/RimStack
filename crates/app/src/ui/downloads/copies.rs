@@ -181,14 +181,18 @@ impl Downloads {
         }
         let unanswered = &self.updates.unanswered;
         if !unanswered.is_empty() {
-            let body = self.named_rows(theme, "unanswered", unanswered, cx);
-            let card = Card::new("unanswered", put(&say!("Not on the Workshop")))
-                .tone(c.warn)
-                .note(put(&say_n!(
-                    unanswered.len(),
-                    "{} mod removed, or made private",
-                    "{} mods removed, or made private"
-                )))
+            let mut body = vec![
+                div()
+                    .sized_text(theme, theme.small())
+                    .text_color(c.ink3)
+                    .child(put(&say!(
+                        "Their authors made them unlisted: their Workshop pages open from a link, but Steam does not tell RimStack whether they have updates."
+                    )))
+                    .into_any_element(),
+            ];
+            body.extend(self.named_rows(theme, "unanswered", unanswered, cx));
+            let card = Card::new("unanswered", put(&say!("Unlisted on the Workshop")))
+                .note(count(unanswered.len()))
                 .body(body);
             cards.push(card.render(theme, None).into_any_element());
         }
