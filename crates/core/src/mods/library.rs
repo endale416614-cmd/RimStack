@@ -2,14 +2,16 @@ use crate::base::aside;
 use crate::base::error::Error;
 use crate::base::sentence::Sentence;
 use crate::base::translate::named;
+use crate::base::versions::latest;
 use crate::said;
 
 use crate::mods::list::{Category, Mod};
 use crate::rimworld::about::{self, About};
+use crate::rimworld::engine::Engine;
 use crate::rimworld::id;
 use crate::rimworld::paths::{ModRoot, Paths, Source};
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub use crate::mods::classify::Kinds;
@@ -30,6 +32,11 @@ pub struct Installed {
     pub code: Code,
     pub preview: Option<PathBuf>,
     pub git: bool,
+    /// When its folder was made, in seconds since 1970: where the system records it.
+    pub created: Option<u64>,
+    /// A Workshop folder without an About.xml, as Steam can leave one it unsubscribed from.
+    /// The game skips it.
+    pub leftover: bool,
 }
 
 impl Installed {
@@ -120,8 +127,16 @@ fn kinds(mod_root: &Path) -> Kinds {
     found
 }
 
+fn created(path: &Path) -> Option<u64> {
+    let made = std::fs::metadata(path).and_then(|m| m.created()).ok()?;
+    let since = made.duration_since(std::time::UNIX_EPOCH).ok()?;
+    Some(since.as_secs())
+}
+
 fn read_mod(path: PathBuf, source: Source) -> Installed {
-    let about = match about::locate(&path) {
+    let located = about::locate(&path);
+    let leftover = located.is_none() && source == Source::Workshop;
+    let about = match located {
         None => Err(Error::format(said!("no About.xml"))),
         Some(file) => std::fs::read(&file)
             .map_err(|e| Error::file(&file, e))
@@ -137,6 +152,8 @@ fn read_mod(path: PathBuf, source: Source) -> Installed {
         code: Code::default(),
         preview: about::preview(&path),
         git: path.join(".git").exists(),
+        created: created(&path),
+        leftover,
         about,
         source,
         path,
@@ -251,9 +268,14 @@ pub struct Library {
     pub unreadable: usize,
     names: HashMap<String, String>,
     pub categories: Vec<Category>,
+    pub game_assemblies: HashSet<String>,
 }
 
 impl Library {
+    pub fn engine(&self) -> Engine {
+        Engine::of(&self.game_version)
+    }
+
     pub fn get(&self, id: ModId) -> Option<&Installed> {
         let ours = id.reading() == self.reading;
         ours.then(|| self.installed.get(id.index())).flatten()
@@ -320,10 +342,15 @@ fn row(m: &Installed, id: String, category: Category, installed: ModId) -> Mod {
         local: m.source == Source::Local,
         workshop: m.source == Source::Workshop,
         git: m.git,
+        leftover: m.leftover,
         code: m.kinds.assemblies,
         patched: m.code.aims.iter().map(patched).collect(),
         sub: String::new(),
         load_micros: None,
+        updated: None,
+        size: None,
+        downloaded: m.created.filter(|_| m.source != Source::Official),
+        activated: None,
         filed: category,
         chosen: false,
         held_by: String::new(),
@@ -336,6 +363,10 @@ fn row(m: &Installed, id: String, category: Category, installed: ModId) -> Mod {
                     .or(a.supported_versions.last().cloned())
             })
             .unwrap_or_default(),
+        latest_game: about
+            .and_then(|a| latest(&a.supported_versions))
+            .unwrap_or_default()
+            .to_string(),
         category,
         installed: Some(installed),
     }
@@ -368,8 +399,13 @@ impl Library {
         found.into_iter().take(most).map(|f| f.3).collect()
     }
 
+    /// Every installed mod but the leftovers.
+    pub fn loadable(&self) -> impl Iterator<Item = (ModId, &Installed)> {
+        self.ids().filter(|(_, m)| !m.leftover)
+    }
+
     pub fn workshop_mods(&self) -> HashMap<&str, ModId> {
-        self.ids()
+        self.loadable()
             .filter(|(_, m)| m.source == Source::Workshop)
             .map(|(i, m)| (m.folder.as_str(), i))
             .collect()
@@ -409,16 +445,22 @@ impl Library {
                         local: false,
                         workshop: false,
                         git: false,
+                        leftover: false,
                         code: false,
                         patched: Default::default(),
                         sub: String::new(),
                         load_micros: None,
+                        updated: None,
+                        size: None,
+                        downloaded: None,
+                        activated: None,
                         filed: Category::Content,
                         chosen: false,
                         held_by: String::new(),
                         name: written.to_string(),
                         author: String::new(),
                         version: String::new(),
+                        latest_game: String::new(),
                         category: Category::Content,
                         installed: None,
                     });
@@ -525,7 +567,9 @@ pub fn load(paths: &Paths) -> Result<Library, Error> {
         || paths.game.as_deref().and_then(Game::find),
     );
     read_code(&mut mods, game.as_ref(), version);
-    Ok(build(mods, &active, version))
+    let mut library = build(mods, &active, version);
+    library.game_assemblies = game.as_ref().map(|g| g.ships().clone()).unwrap_or_default();
+    Ok(library)
 }
 
 mod copies;

@@ -1,5 +1,5 @@
 name: Linux setup
-description: Qt and the system libraries RimStack builds, runs and is packaged with
+description: The system libraries RimStack builds and is packaged with
 runs:
   using: composite
   steps:
@@ -8,17 +8,7 @@ runs:
       run: |
         sudo apt-get update -q
         sudo apt-get install -y -q --no-install-recommends \
-          libgl1-mesa-dev libegl1-mesa-dev libfontconfig1 libxkbcommon0 libxkbcommon-x11-0 \
-          libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
-          libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
-          libwayland-client0 libwayland-cursor0 libwayland-egl1 \
-          file lld
-    - uses: jurplel/install-qt-action@v4
-      with:
-        version: ${{ env.QT_VERSION }}
-        aqtsource: ${{ env.AQT_SOURCE }}
-        cache: true
+          libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev libfontconfig-dev file lld
     - uses: Swatinem/rust-cache@v2
       with:
-        cache-on-failure: true
         save-if: ${{ github.ref == 'refs/heads/main' }}

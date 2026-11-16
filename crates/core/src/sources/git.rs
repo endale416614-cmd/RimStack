@@ -619,7 +619,6 @@ mod tests {
             in_checkout(&mod_root).unwrap_err().kind(),
             crate::base::error::Kind::Refused
         );
-        assert!(in_checkout(&mod_root).is_err());
 
         let inside = tmp.path().join("Mods/own");
         std::fs::create_dir_all(&inside).unwrap();
@@ -630,22 +629,18 @@ mod tests {
     }
 
     #[test]
-    fn a_plain_git_folder_is_accepted() {
-        let tmp = tempfile::tempdir().unwrap();
-        git(tmp.path(), &["init", "--quiet", "-b", "main"]);
-        assert!(in_checkout(tmp.path()).is_ok());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_mod_folder_that_is_itself_a_link_is_accepted() {
+    fn a_plain_git_folder_and_a_mod_folder_that_is_itself_a_link_are_accepted() {
         let tmp = tempfile::tempdir().unwrap();
         let checkout = tmp.path().join("checkout");
         std::fs::create_dir(&checkout).unwrap();
         git(&checkout, &["init", "--quiet", "-b", "main"]);
-        let linked = tmp.path().join("linked");
-        std::os::unix::fs::symlink(&checkout, &linked).unwrap();
-        assert!(in_checkout(&linked).is_ok());
+        assert!(in_checkout(&checkout).is_ok());
+        #[cfg(unix)]
+        {
+            let linked = tmp.path().join("linked");
+            std::os::unix::fs::symlink(&checkout, &linked).unwrap();
+            assert!(in_checkout(&linked).is_ok());
+        }
     }
 
     #[test]

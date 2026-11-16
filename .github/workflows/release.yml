@@ -21,8 +21,6 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_PROFILE_RELEASE_STRIP: "true"
   RIMSTACK_PROFILE: release
-  QT_VERSION: "6.12.0"
-  AQT_SOURCE: "git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7"
 
 jobs:
   linux:
@@ -37,6 +35,40 @@ jobs:
           name: package-linux
           path: target/packages/*
           if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: program-linux
+          path: target/release/rimstack
+          if-no-files-found: error
+          retention-days: 1
+
+  flatpak:
+    needs: linux
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: program-linux
+          path: target/flatpak
+      - name: The version, for the file's name
+        id: version
+        run: |
+          version=$(grep -m1 -E '^version = "' Cargo.toml | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: RimStack-${{ steps.version.outputs.version }}-x86_64.flatpak
+          manifest-path: packaging/flatpak/io.github.TheForgotten69.RimStack.yaml
+          cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/io.github.TheForgotten69.RimStack.yaml') }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-linux-flatpak
+          path: RimStack-*.flatpak
+          if-no-files-found: error
 
   windows:
     runs-on: windows-latest
@@ -44,15 +76,8 @@ jobs:
       SIGNED: ${{ secrets.WINDOWS_CERT != '' }}
     steps:
       - uses: actions/checkout@v7
-      - uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          aqtsource: ${{ env.AQT_SOURCE }}
-          arch: win64_msvc2022_64
-          cache: true
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Inno Setup, for the installer, when the runner lacks it
@@ -90,15 +115,11 @@ jobs:
       NOTARIZED: ${{ secrets.MAC_NOTARY_APPLE_ID != '' }}
     steps:
       - uses: actions/checkout@v7
-      - uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          aqtsource: ${{ env.AQT_SOURCE }}
-          cache: true
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: The Metal compiler, for the interface's shaders, which Xcode 26 downloads apart
+        run: xcrun -f metal >/dev/null 2>&1 || xcodebuild -downloadComponent MetalToolchain
       - name: The icon tool, for the package
         run: brew install librsvg
       - name: The signing certificate, when there is one
@@ -156,3 +177,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || 'beta' }}
         run: packaging/release.sh packages "$GITHUB_SHA" "$TAG"
+
+  release-flatpak:
+    needs: [flatpak, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: package-linux-flatpak
+          path: packages
+      - name: Add the Flatpak to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || 'beta' }}
+        run: packaging/release-flatpak.sh packages "$TAG"

@@ -41,8 +41,7 @@ pub struct Pointed {
     pub alike: usize,
     #[serde(rename = "mod")]
     pub first: Option<String>,
-    /// -1 for an error that points at no mod.
-    pub mod_id: i64,
+    pub mod_id: Option<ModId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -50,7 +49,7 @@ pub struct Pointed {
 pub struct Blamed {
     /// Empty for the errors that point at no mod.
     pub name: String,
-    pub mod_id: i64,
+    pub mod_id: Option<ModId>,
     pub kinds: usize,
     pub times: usize,
 }
@@ -61,7 +60,6 @@ pub fn of(
     name_of: &dyn Fn(ModId) -> String,
 ) -> (Vec<Pointed>, Vec<Blamed>) {
     let runs = logs::runs(groups);
-    let numbered = |id: Option<ModId>| id.map_or(-1, |id| i64::from(id.to_qml()));
     let mut counted: Vec<(Option<ModId>, usize)> = Vec::with_capacity(groups.len());
     let errors = groups
         .iter()
@@ -86,7 +84,7 @@ pub fn of(
                 run: runs[at],
                 alike: runs.iter().filter(|&&start| start == runs[at]).count(),
                 first: first.map(name_of),
-                mod_id: numbered(first),
+                mod_id: first,
             }
         })
         .collect();
@@ -94,7 +92,7 @@ pub fn of(
         .iter()
         .map(|culprit| Blamed {
             name: culprit.mod_id.map(name_of).unwrap_or_default(),
-            mod_id: numbered(culprit.mod_id),
+            mod_id: culprit.mod_id,
             kinds: culprit.kinds,
             times: culprit.times,
         })
@@ -146,19 +144,20 @@ mod tests {
             ),
         ];
         let (errors, blamed) = of(&groups, &clues, &name_of);
-        let pointed: Vec<i64> = errors.iter().map(|error| error.mod_id).collect();
-        let roads_id = i64::from(roads().to_qml());
-        assert_eq!(pointed, [roads_id, -1, roads_id, -1]);
+        let pointed: Vec<Option<ModId>> = errors.iter().map(|error| error.mod_id).collect();
+        let roads_packed = roads().to_packed();
+        let roads_id = Some(roads());
+        assert_eq!(pointed, [roads_id, None, roads_id, None]);
         assert_eq!(errors[0].first.as_deref(), Some("Better Roads"));
         assert_eq!(errors[3].mods, []);
 
         let roads = blamed.iter().find(|b| b.mod_id == roads_id).unwrap();
         assert_eq!((roads.kinds, roads.times), (2, 4));
-        let nobody = blamed.iter().find(|b| b.mod_id == -1).unwrap();
+        let nobody = blamed.iter().find(|b| b.mod_id.is_none()).unwrap();
         assert_eq!((nobody.name.as_str(), nobody.times), ("", 7));
 
         let said = serde_json::to_value(&errors[0]).unwrap();
         assert_eq!(said["mod"], "Better Roads");
-        assert_eq!(said["mods"][0]["modId"], roads_id);
+        assert_eq!(said["mods"][0]["modId"], roads_packed);
     }
 }

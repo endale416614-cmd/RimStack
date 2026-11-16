@@ -1,0 +1,87 @@
+# RimStack as a Flatpak on the freedesktop runtime, so it runs on any
+# distribution with Flatpak, on the runtime's own libraries.
+#
+# The program is built beside it and placed at target/flatpak/rimstack: by the
+# release's Linux job, on a glibc no newer than the runtime's, or by
+# `just flatpak`, which builds the .flatpak file a release gets.
+app-id: io.github.TheForgotten69.RimStack
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: rimstack
+
+# SteamCMD has no 64-bit build, so it needs the runtime's 32-bit libraries,
+# where the runtime's /lib/ld-linux.so.2 points.
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '26.08'
+
+finish-args:
+  # A window of its own on the desktop's compositor, drawn by the GPU.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Both the 32-bit libraries and the app's own sit under /app/lib.
+  - --allow=multiarch
+  # Community rules, Steam's pages and mod textures are fetched, on request only.
+  - --share=network
+  # The game, its Mods folder, Steam's workshop library, its settings and the
+  # saves are all somewhere in the user's home, game, mods can be on separate drive too
+  - --filesystem=home
+  # A Steam from Flathub keeps its library, workshop items and settings in its own sandbox.
+  - --filesystem=~/.var/app/com.valvesoftware.Steam
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+
+modules:
+  # The runtime has no git, and a program may not run the host's: RimStack runs
+  # git to read a mod's own checkout, and refuses the ones that are more than a
+  # clone. Built first: flatpak-builder keeps a module only while every module
+  # before it is unchanged, and the app changes with every commit.
+  - name: git
+    buildsystem: simple
+    build-commands:
+      - make -j "$FLATPAK_BUILDER_N_JOBS" prefix=/app NO_TCLTK=1 NO_GETTEXT=1
+        NO_PERL=1 NO_PYTHON=1 NO_RUST=1 NO_INSTALL_HARDLINKS=1 USE_LIBPCRE2=1
+      - make prefix=/app NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1 NO_PYTHON=1
+        NO_RUST=1 NO_INSTALL_HARDLINKS=1 USE_LIBPCRE2=1 install
+    cleanup:
+      - /share/doc
+      - /share/man
+      - /share/locale
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz
+        sha256: 26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+        x-checker-data:
+          type: anitya
+          project-id: 5350
+          url-template: https://www.kernel.org/pub/software/scm/git/git-$version.tar.xz
+
+  - name: rimstack
+    buildsystem: simple
+    build-commands:
+      # Flatpak mounts the extension over this folder; the app makes it.
+      - mkdir -p /app/lib/i386-linux-gnu
+      - install -Dm755 rimstack-program /app/bin/rimstack
+      - install -Dm644 crates/app/assets/rimstack.svg /app/share/icons/hicolor/scalable/apps/$FLATPAK_ID.svg
+      - install -Dm644 crates/app/assets/rimstack.desktop /app/share/applications/$FLATPAK_ID.desktop
+      # Flatpak shows the icon and the name it files the application under.
+      - desktop-file-edit --set-key=Icon --set-value=$FLATPAK_ID /app/share/applications/$FLATPAK_ID.desktop
+      - desktop-file-edit --set-key=StartupWMClass --set-value=$FLATPAK_ID /app/share/applications/$FLATPAK_ID.desktop
+      # The release is the version Cargo.toml names, so the two cannot disagree.
+      - packaging/flatpak/metainfo-version.py packaging/flatpak/$FLATPAK_ID.metainfo.xml $FLATPAK_ID.metainfo.xml
+      - install -Dm644 $FLATPAK_ID.metainfo.xml /app/share/metainfo/$FLATPAK_ID.metainfo.xml
+    sources:
+      - type: file
+        path: ../../target/flatpak/rimstack
+        dest-filename: rimstack-program
+      - type: dir
+        path: ../../
+        skip:
+          - target
+          - .git
+          - .flatpak-builder

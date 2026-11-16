@@ -3,13 +3,36 @@ use std::fs::Permissions;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Synced to the disk before it returns: a slow wait.
 pub fn write(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), Error> {
+    crate::base::waits::slow(&format!("{} written", path.display()));
     let failed = |e: std::io::Error| Error::file(path, e);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(failed)?;
     }
     let real = through_links(path);
     put(&partial_beside(&real), &real, contents.as_ref()).map_err(failed)
+}
+
+pub fn write_json(path: &Path, value: &impl serde::Serialize) -> Result<(), Error> {
+    let text = serde_json::to_vec(value)
+        .map_err(|e| Error::format(crate::said!("{}: {}", path.display(), e)))?;
+    write(path, text)
+}
+
+/// One JSON value per line.
+pub fn write_lines<T: serde::Serialize>(
+    path: &Path,
+    lines: impl IntoIterator<Item = T>,
+) -> Result<(), Error> {
+    let mut text = String::new();
+    for line in lines {
+        let one = serde_json::to_string(&line)
+            .map_err(|e| Error::format(crate::said!("{}: {}", path.display(), e)))?;
+        text.push_str(&one);
+        text.push('\n');
+    }
+    write(path, text)
 }
 
 /// Two writes must not share a partial name: each would write over the other's bytes.
@@ -29,14 +52,26 @@ pub(crate) fn through_links(path: &Path) -> PathBuf {
 /// The sync before the rename is needed: without it a power cut can leave an empty file.
 pub(crate) fn put(partial: &Path, path: &Path, contents: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    let before = std::fs::metadata(path).ok().map(|m| m.permissions());
-    let written = (|| {
-        let mut file = std::fs::File::create(partial)?;
+    let written = std::fs::File::create(partial).and_then(|mut file| {
         file.write_all(contents)?;
-        file.sync_all()?;
+        Ok(file)
+    });
+    match written {
+        Ok(file) => settle(file, partial, path),
+        Err(problem) => {
+            let _ = std::fs::remove_file(partial);
+            Err(problem)
+        }
+    }
+}
+
+/// `file`, written in full at `partial`, takes the place of `path`.
+pub(crate) fn settle(file: std::fs::File, partial: &Path, path: &Path) -> std::io::Result<()> {
+    let before = std::fs::metadata(path).ok().map(|m| m.permissions());
+    let written = file.sync_all().and_then(|()| {
         drop(file);
         replace(partial, path, before.as_ref())
-    })();
+    });
     if written.is_err() && partial.is_file() {
         let _ = std::fs::remove_file(partial);
     }

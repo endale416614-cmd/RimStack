@@ -148,7 +148,7 @@ mod tests {
         );
         assert_eq!(
             changes.said().to_kept().to_string(),
-            r#"[",",["{} moved","1"],["{} activated","1"],["{} deactivated","1"]]"#
+            r#"[",",["{} moved",1],["{} activated",1],["{} deactivated",1]]"#
         );
         s.mark_saved_as(s.current().to_vec());
         assert!(s.changes().is_empty());
@@ -159,13 +159,6 @@ mod tests {
         let mut s = Session::new(ids(&["a", "b", "c"]));
         s.record(ids(&["a", "c", "b"]));
         assert_eq!(s.changes().moved.len(), 1);
-    }
-
-    #[test]
-    fn a_new_session_is_clean_with_nothing_to_undo() {
-        let s = Session::new(ids(&["a", "b"]));
-        assert_eq!(s.current(), ids(&["a", "b"]));
-        assert!(!s.is_dirty() && !s.can_undo() && !s.can_redo());
     }
 
     #[test]

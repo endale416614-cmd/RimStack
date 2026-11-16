@@ -139,15 +139,11 @@ mod tests {
         );
     }
     #[test]
-    fn contrast_is_the_wcag_ratio() {
+    fn contrast_is_the_wcag_ratio_and_a_colour_with_anything_but_hex_digits_has_none() {
         assert_eq!(contrast("#000000", "#ffffff").map(f64::round), Some(21.0));
         assert_eq!(contrast("#777777", "#777777"), Some(1.0));
         assert_eq!(contrast("#ff000000", "#ffffff").map(f64::round), Some(21.0));
         assert_eq!(contrast("red", "#ffffff"), None);
-    }
-
-    #[test]
-    fn a_colour_with_anything_but_hex_digits_is_no_colour() {
         assert_eq!(contrast("#aébbccd", "#000000"), None);
         assert_eq!(contrast("#+f0000", "#000000"), None);
         assert_eq!(contrast("#12345", "#000000"), None);

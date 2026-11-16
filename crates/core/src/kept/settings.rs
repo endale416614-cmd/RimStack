@@ -64,6 +64,12 @@ impl Settings {
         self.get("updates") == Some("nightly")
     }
 
+    pub fn update_every_minutes(&self) -> u64 {
+        self.get("updateEvery")
+            .and_then(|minutes| minutes.parse().ok())
+            .unwrap_or(UPDATE_EVERY_AT_FIRST)
+    }
+
     pub fn logs_kept(&self) -> Option<usize> {
         self.get("logsKept")?.parse().ok()
     }
@@ -72,7 +78,12 @@ impl Settings {
     /// cannot hold.
     pub fn set(&mut self, name: &str, value: &str) -> Result<(), Error> {
         let value = value.trim();
-        let Some((_, holds)) = KNOWN.iter().find(|(known, _)| *known == name) else {
+        let switch = Switch::ALL
+            .iter()
+            .any(|s| s.name() == name)
+            .then_some(&SWITCH);
+        let known = KNOWN.iter().find(|(known, _)| *known == name);
+        let Some(holds) = switch.or(known.map(|(_, holds)| holds)) else {
             return Err(Error::refused(said!("{} is not a setting", name)));
         };
         let fits = match holds {
@@ -102,7 +113,11 @@ enum Holds {
 
 const SWITCH: Holds = Holds::Choice(&["on", "off"]);
 
-const KNOWN: [(&str, Holds); 21] = [
+/// Minutes between two checks for updates made by themselves.
+pub const UPDATE_EVERY: [&str; 6] = ["1", "5", "10", "15", "30", "60"];
+const UPDATE_EVERY_AT_FIRST: u64 = 10;
+
+const KNOWN: [(&str, Holds); 19] = [
     ("game", Holds::Text),
     ("config", Holds::Text),
     ("workshop", Holds::Text),
@@ -118,12 +133,10 @@ const KNOWN: [(&str, Holds); 21] = [
     ("databasesOff", Holds::List),
     ("replacementsIgnored", Holds::List),
     ("textureSkip", Holds::List),
-    ("communityRules", SWITCH),
-    ("versionWarnings", SWITCH),
-    ("fileHints", SWITCH),
-    ("gitForWorkshop", SWITCH),
-    ("selfCheck", SWITCH),
     ("updates", Holds::Choice(&["stable", "nightly"])),
+    ("updateEvery", Holds::Choice(&UPDATE_EVERY)),
+    ("window", Holds::Text),
+    ("windowMaximized", Holds::Choice(&["yes"])),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,18 +144,38 @@ pub enum Switch {
     CommunityRules,
     VersionWarnings,
     FileHints,
+    DimLeftOut,
     GitForWorkshop,
     SelfCheck,
+    ShowMature,
+    SteamKeyKept,
+    AutoUpdates,
 }
 
 impl Switch {
+    pub const ALL: [Switch; 9] = [
+        Switch::CommunityRules,
+        Switch::VersionWarnings,
+        Switch::FileHints,
+        Switch::DimLeftOut,
+        Switch::GitForWorkshop,
+        Switch::SelfCheck,
+        Switch::ShowMature,
+        Switch::SteamKeyKept,
+        Switch::AutoUpdates,
+    ];
+
     pub fn name(self) -> &'static str {
         match self {
             Switch::CommunityRules => "communityRules",
             Switch::VersionWarnings => "versionWarnings",
             Switch::FileHints => "fileHints",
+            Switch::DimLeftOut => "dimLeftOut",
             Switch::GitForWorkshop => "gitForWorkshop",
             Switch::SelfCheck => "selfCheck",
+            Switch::ShowMature => "showMature",
+            Switch::SteamKeyKept => "steamKeyKept",
+            Switch::AutoUpdates => "autoUpdates",
         }
     }
 
@@ -151,8 +184,12 @@ impl Switch {
             Switch::CommunityRules
             | Switch::VersionWarnings
             | Switch::SelfCheck
-            | Switch::FileHints => true,
-            Switch::GitForWorkshop => false,
+            | Switch::FileHints
+            | Switch::DimLeftOut => true,
+            Switch::GitForWorkshop
+            | Switch::ShowMature
+            | Switch::SteamKeyKept
+            | Switch::AutoUpdates => false,
         }
     }
 }
@@ -183,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn a_switch_is_as_it_was_set_and_otherwise_as_it_is_at_first() {
+    fn every_switch_is_as_it_was_set_and_otherwise_as_it_is_at_first() {
         let mut s = Settings::default();
         assert!(s.switch(Switch::CommunityRules) && s.switch(Switch::FileHints));
         assert!(!s.switch(Switch::GitForWorkshop));
@@ -192,6 +229,21 @@ mod tests {
         assert!(!s.switch(Switch::CommunityRules) && !s.switch(Switch::FileHints));
         s.set("communityRules", "").unwrap();
         assert!(s.switch(Switch::CommunityRules));
+        for switch in Switch::ALL {
+            for (value, on) in [("on", true), ("off", false)] {
+                s.set(switch.name(), value).unwrap();
+                assert_eq!(s.switch(switch), on, "{}", switch.name());
+            }
+        }
+    }
+
+    #[test]
+    fn updates_are_checked_every_ten_minutes_until_set_otherwise() {
+        let mut s = Settings::default();
+        assert_eq!(s.update_every_minutes(), 10);
+        s.set("updateEvery", "60").unwrap();
+        assert_eq!(s.update_every_minutes(), 60);
+        assert!(s.set("updateEvery", "7").is_err());
     }
 
     #[test]

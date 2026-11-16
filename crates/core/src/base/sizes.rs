@@ -16,6 +16,10 @@ pub fn together(a_mb: f64, b_mb: f64) -> (Sentence, Sentence) {
     (in_unit(a_mb * scale, step), in_unit(b_mb * scale, step))
 }
 
+pub fn of_bytes(bytes: u64) -> Sentence {
+    together(bytes as f64 / 1_048_576.0, 0.0).0
+}
+
 fn in_unit(n: f64, step: usize) -> Sentence {
     let number = if n <= 0.0 {
         "0".to_string()
@@ -50,5 +54,7 @@ mod tests {
         assert_eq!(pair(120.0, 0.03), ("120 MB".into(), "0.03 MB".into()));
         assert_eq!(pair(2048.0, 3.0), ("2.0 GB".into(), "<0.01 GB".into()));
         assert_eq!(pair(5.0, 0.0), ("5.0 MB".into(), "0 MB".into()));
+        assert_eq!(of_bytes(3 * 1_048_576).to_string(), "3.0 MB");
+        assert_eq!(of_bytes(2048).to_string(), "2.0 KB");
     }
 }

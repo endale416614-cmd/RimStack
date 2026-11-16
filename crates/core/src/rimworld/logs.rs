@@ -45,7 +45,6 @@ fn continues(line: &str) -> bool {
         || bare_frame()
 }
 
-/// Kinds differ only in numbers.
 fn kind(head: &str) -> String {
     head.chars().filter(|c| !c.is_ascii_digit()).collect()
 }
@@ -553,7 +552,7 @@ Loaded 5 things
 ";
 
     #[test]
-    fn errors_are_grouped_with_their_first_trace_and_counted() {
+    fn errors_are_grouped_with_their_first_trace_counted_and_one_kind_when_only_numbers_differ() {
         let found = errors(LOG);
         assert_eq!(found.len(), 2);
         assert!(found[0].head.starts_with("Error in static constructor"));
@@ -564,11 +563,7 @@ Loaded 5 things
             found[0].trace[4],
             "   --- End of inner exception stack trace ---"
         );
-    }
-
-    #[test]
-    fn errors_that_differ_only_in_numbers_are_one_kind() {
-        let found = errors(LOG);
+        // Errors that differ only in numbers are one kind.
         assert!(found[1].head.contains("Steel7"));
         assert_eq!(found[1].count, 2);
         assert!(found[1].trace.is_empty());

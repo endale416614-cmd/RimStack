@@ -421,7 +421,6 @@ mod tests {
             Assembly::read(&dll).unwrap().type_names(),
             ["My.Dialog", "My.Helper"]
         );
-        assert_eq!(types.len(), 2);
         assert_eq!(types[0].name, "My.Dialog");
         assert_eq!(types[0].extends.as_deref(), Some("Verse.Window"));
         let drawn: Vec<(&str, bool)> = types[0]

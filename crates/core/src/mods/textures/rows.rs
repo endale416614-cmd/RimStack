@@ -44,8 +44,8 @@ impl Summary {
         }
     }
 
-    pub fn waits(&self, skipped: bool) -> bool {
-        !skipped && (self.out_of_date > 0 || self.not_converted() > 0)
+    pub fn waits(&self, skipped: bool, converts: bool) -> bool {
+        converts && !skipped && (self.out_of_date > 0 || self.not_converted() > 0)
     }
 }
 
@@ -80,12 +80,13 @@ impl Row {
         counted: Summary,
         skipped: bool,
         active: bool,
+        converts: bool,
     ) -> Option<Self> {
         let megabytes = |bytes: u64| bytes as f64 / 1_048_576.0;
         let state = counted.state(skipped);
         (counted.textures > 0).then(|| Self {
             id,
-            waits: counted.waits(skipped),
+            waits: counted.waits(skipped, converts),
             name: name.to_string(),
             active,
             textures: counted.textures,
@@ -123,7 +124,7 @@ mod tests {
             shipped,
             ..Summary::default()
         };
-        let state = |s: Summary| (s.state(false), s.waits(false));
+        let state = |s: Summary| (s.state(false), s.waits(false, true));
         assert_eq!(state(counted(4, 0, 0, 0)), (State::NotConverted, true));
         assert_eq!(state(counted(4, 1, 0, 1)), (State::PartlyConverted, true));
         assert_eq!(state(counted(4, 3, 1, 0)), (State::OutOfDate, true));
@@ -131,8 +132,12 @@ mod tests {
         assert_eq!(state(counted(4, 3, 0, 1)), (State::Converted, false));
         let skipped = counted(4, 0, 2, 0);
         assert_eq!(
-            (skipped.state(true), skipped.waits(true)),
+            (skipped.state(true), skipped.waits(true, true)),
             (State::Skipped, false)
+        );
+        assert!(
+            !counted(4, 0, 1, 0).waits(false, false),
+            "nothing waits from 1.7"
         );
     }
 
@@ -152,6 +157,7 @@ mod tests {
                 s,
                 false,
                 at == 1,
+                true,
             )
         };
         assert_eq!(row(0, "None", counted(0, 0)), None);

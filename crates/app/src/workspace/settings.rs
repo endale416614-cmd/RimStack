@@ -1,13 +1,15 @@
 use super::App;
 use crate::changes::Changes;
 use crate::reports::{
-    Database, FolderVerdict, LastLaunch, ReleaseSaid, SettingsReport, ShortContrast, Summary,
+    Database, FolderVerdict, KeptCount, LastLaunch, ReleaseSaid, SettingsReport, ShortContrast,
+    Summary,
 };
 use rimstack_core::base::error::Error;
 use rimstack_core::base::locks::Shared;
 use rimstack_core::base::sentence::Sentence;
 use rimstack_core::base::translate::{LOCALE, detected};
-use rimstack_core::kept::{owntheme, settings::Switch};
+use rimstack_core::kept::owntheme;
+use rimstack_core::kept::settings::{Switch, UPDATE_EVERY};
 use rimstack_core::mods::community;
 use rimstack_core::rimworld::workshopdb;
 use rimstack_core::sources::replacements;
@@ -67,6 +69,7 @@ const SHIPPED: &[(&str, &str)] = &[
         "Русский",
         include_str!("../../assets/languages/Русский.json"),
     ),
+    ("한국어", include_str!("../../assets/languages/한국어.json")),
 ];
 
 const EVERY_TEXT: &str = include_str!("../../assets/words.json");
@@ -78,12 +81,25 @@ fn shipped(name: &str) -> Option<&'static str> {
         .map(|(_, words)| *words)
 }
 
+fn every(minutes: u64) -> Sentence {
+    match minutes {
+        1 => say!("Every minute"),
+        60 => say!("Every hour"),
+        n => say_n!(
+            usize::try_from(n).unwrap_or(0),
+            "Every {} minute",
+            "Every {} minutes"
+        ),
+    }
+}
+
 pub fn effects(name: &str) -> Changes {
     Changes::SETTINGS
         | match name {
             "game" | "config" | "workshop" => Changes::FOLDERS,
             "language" => Changes::LANGUAGE,
             "gitForWorkshop" => Changes::UPDATES,
+            "showMature" => Changes::SOURCE,
             "logsKept" => Changes::LOGS,
             "communityRules" | "fileHints" | "versionWarnings" | "versionAsideFor" => {
                 Changes::PROBLEMS
@@ -103,10 +119,7 @@ impl App {
     }
 
     fn rimsort_rules_file(&self) -> PathBuf {
-        self.data_dir()
-            .with_file_name("RimSort")
-            .join("dbs")
-            .join("userRules.json")
+        self.rimsort_dir().join("dbs").join("userRules.json")
     }
 
     pub fn keep_setting(&self, name: &str, value: &str) -> Result<(), Error> {
@@ -138,6 +151,7 @@ impl App {
             set_workshop: owned("workshop"),
             launch_arguments: owned("launchArguments"),
             launch_directly: settings.launch_directly(),
+            sandboxed: rimstack_core::base::sandbox::sandboxed(),
             language: owned("language"),
             english: self.language_in_use() == "English",
             language_in_use: self.language_in_use(),
@@ -148,9 +162,23 @@ impl App {
             version_warnings: settings.switch(Switch::VersionWarnings),
             version_aside_for: owned("versionAsideFor"),
             file_hints: settings.switch(Switch::FileHints),
+            dim_left_out: settings.switch(Switch::DimLeftOut),
             git_for_workshop: settings.switch(Switch::GitForWorkshop),
+            auto_updates: settings.switch(Switch::AutoUpdates),
+            auto_updates_asked: settings.get(Switch::AutoUpdates.name()).is_some(),
+            update_every: UPDATE_EVERY
+                .iter()
+                .map(|m| every(m.parse().unwrap_or(0)))
+                .collect(),
+            update_every_at: UPDATE_EVERY
+                .iter()
+                .position(|m| m.parse() == Ok(settings.update_every_minutes()))
+                .unwrap_or(0),
+            update_every_said: every(settings.update_every_minutes()),
+            update_every_set: settings.get("updateEvery").is_some(),
             git: self.git().clone(),
             self_check: settings.switch(Switch::SelfCheck),
+            show_mature: settings.switch(Switch::ShowMature),
             nightly_updates: settings.nightly_updates(),
             logs_kept: settings.logs_kept().unwrap_or(10),
             logs_kept_now: rimstack_core::rimworld::logs::kept(&logs).len(),
@@ -176,6 +204,7 @@ impl App {
                 .join("steamcmd")
                 .to_string_lossy()
                 .into_owned(),
+            steamcmd_refused: rimstack_core::sources::redownload::refusal(),
             settings_file: self.settings_file().to_string_lossy().into_owned(),
             diagnostics_file: self.diagnostics_file().to_string_lossy().into_owned(),
             version: build_label(),
@@ -210,12 +239,43 @@ impl App {
             }
             Err(_) => 0,
         };
+        let folders = kept.map_or(1, |s| s.folders.len());
+        let snapshots = rimstack_core::kept::lists::count(&self.snapshots_dir());
+        let rules = self.user_rules().reading().len();
+        let community = (*self.community()).as_ref().map_or(0, |c| c.len());
+        let saved = match folders {
+            0 | 1 => Sentence::Number(saves as i64),
+            _ => say!("{} in {} RimSaves folders", saves, folders),
+        };
+        let counts = [
+            (say!("Saves"), saved),
+            (say!("Snapshots"), Sentence::Number(snapshots as i64)),
+            (say!("Own rules"), Sentence::Number(rules as i64)),
+            (
+                say!("Community rules"),
+                match community {
+                    0 => say!("Not downloaded"),
+                    n => say_n!(n, "{} mod", "{} mods"),
+                },
+            ),
+        ];
+        let noted = [
+            Some(say_n!(saves, "{} save", "{} saves")),
+            Some(say_n!(snapshots, "{} snapshot", "{} snapshots")),
+            (community > 0).then(|| say_n!(community, "rules for {} mod", "rules for {} mods")),
+        ];
         Summary {
             saves,
-            folders: kept.map_or(1, |s| s.folders.len()),
-            snapshots: rimstack_core::kept::lists::count(&self.snapshots_dir()),
+            folders,
+            snapshots,
             replacements,
-            rules: self.user_rules().reading().len(),
+            rules,
+            kept_note: Sentence::listed(noted.into_iter().flatten().collect()),
+            kept: counts
+                .into_iter()
+                .filter(|(_, value)| !value.is_empty())
+                .map(|(label, value)| KeptCount { label, value })
+                .collect(),
             last_launch: last.map(|l| LastLaunch {
                 time: l.time,
                 errors: l.errors,
@@ -294,7 +354,6 @@ impl App {
         self.language_table(&self.language_in_use())
     }
 
-    /// Leaves an existing file as it is.
     pub fn start_language(&self, name: &str) -> Result<PathBuf, Error> {
         let name = name.trim();
         if name.is_empty() || name.contains(['/', '\\']) {
@@ -330,7 +389,6 @@ impl App {
         owntheme::colours_for(&file, theme, &flat_for)
     }
 
-    /// Adds to an existing file rather than overwriting it.
     pub fn start_own_theme(&self, theme: &str, colours: &Value) -> Result<PathBuf, Error> {
         let file = self.theme_file();
         let now = std::fs::read_to_string(&file)
@@ -410,6 +468,13 @@ impl App {
         self.keep_setting("databasesOff", &off.join(","))
     }
 
+    /// Browse searches the index the same download writes, so it is fetched even where the names
+    /// are switched off until the index exists.
+    fn names_wanted(&self) -> bool {
+        self.database_on("names")
+            || !rimstack_core::rimworld::workshopindex::file_in(self.data_dir()).exists()
+    }
+
     pub fn download_databases(&self) -> Result<(), Error> {
         let data = self.data_dir();
         let mut failed: Vec<Error> = Vec::new();
@@ -431,19 +496,32 @@ impl App {
         }
         if self.database_on("replacements") {
             failed.extend(replacements::download(&replacements::file_in(data)).err());
+            let _ = self.replacements();
         }
-        if self.database_on("names") {
+        if self.names_wanted() {
             let file = workshopdb::file_in(data);
             match workshopdb::download(&file) {
                 Ok(fresh) => self.workshop_names.put(super::written(file), fresh),
                 Err(why) => failed.push(why),
             }
         }
+        *self
+            .community_problem
+            .write()
+            .unwrap_or_else(|p| p.into_inner()) = failed.first().map(|why| why.sentence().clone());
         self.publish(Changes::COMMUNITY | Changes::PROBLEMS);
         for why in &failed {
             rimstack_core::problem!("{why}");
         }
         failed.into_iter().next().map_or(Ok(()), Err)
+    }
+
+    /// Why the community data last failed to download, until one succeeds.
+    pub fn community_problem(&self) -> Option<Sentence> {
+        self.community_problem
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     /// 0: the game version, 1: the installed version, 2: never.
@@ -463,21 +541,19 @@ impl App {
         };
         let mut yours = self.user_rules().writing();
         let added = yours.import(&pairs);
-        let written = yours.write(&self.user_rules_file());
+        let kept = yours.clone();
         drop(yours);
-        match written {
-            Err(problem) => problem.sentence().clone(),
-            Ok(()) if pairs.is_empty() => say!("RimSort has no rules of your own."),
-            Ok(()) => {
-                self.publish(Changes::RULES | Changes::PROBLEMS);
-                say_n!(
-                    pairs.len(),
-                    "RimSort's {} rule: {} new, now yours here.",
-                    "RimSort's {} rules: {} new, now yours here.",
-                    added
-                )
-            }
+        self.write_user_rules(kept);
+        if pairs.is_empty() {
+            return say!("RimSort has no rules of your own.");
         }
+        self.publish(Changes::RULES | Changes::PROBLEMS);
+        say_n!(
+            pairs.len(),
+            "RimSort's {} rule: {} new, now yours here.",
+            "RimSort's {} rules: {} new, now yours here.",
+            added
+        )
     }
 
     pub fn set_mod_settings_aside(&self) -> Sentence {
@@ -519,7 +595,7 @@ const COMMIT: &str = match option_env!("RIMSTACK_COMMIT") {
     None => "",
 };
 
-fn build_label() -> String {
+pub fn build_label() -> String {
     match COMMIT {
         "" => env!("CARGO_PKG_VERSION").to_string(),
         commit => format!("{} ({commit})", env!("CARGO_PKG_VERSION")),
@@ -553,112 +629,25 @@ pub fn newest_release(nightly: bool) -> ReleaseSaid {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::workspace::tests::installed;
-    use std::sync::{Arc, Mutex};
-
-    fn heard(app: &App) -> Arc<Mutex<Changes>> {
-        let heard = Arc::new(Mutex::new(Changes::NONE));
-        let into = heard.clone();
-        app.listen(move |changes| *into.lock().unwrap() |= changes);
-        heard
-    }
-
-    #[test]
-    fn a_setting_tells_what_follows_from_it() {
-        let (_tmp, app) = installed();
-        let heard = heard(&app);
-        app.keep_setting("game", "/elsewhere").unwrap();
-        assert!(heard.lock().unwrap().contains(Changes::FOLDERS));
-        app.keep_setting("fileHints", "on").unwrap();
-        assert!(heard.lock().unwrap().contains(Changes::PROBLEMS));
-        assert!(app.keep_setting("noSuchSetting", "x").is_err());
-    }
-
-    #[test]
-    fn a_database_switched_off_joins_those_already_off() {
-        let (_tmp, app) = installed();
-        app.use_database("names", false).unwrap();
-        app.use_database("rules", false).unwrap();
-        assert_eq!(app.settings().get("databasesOff"), Some("rules,names"));
-        app.use_database("names", true).unwrap();
-        assert_eq!(app.settings().get("databasesOff"), Some("rules"));
-        let on: Vec<bool> = app.databases().iter().map(|d| d.on).collect();
-        assert_eq!(on, [false, true, true, true]);
-    }
-
-    #[test]
-    fn version_warnings_are_set_aside_for_the_installed_version_only() {
-        let (_tmp, app) = installed();
-        app.version_warnings(1).unwrap();
-        let installed = app.paths().game_version.clone().unwrap();
-        assert_eq!(
-            app.settings().get("versionAsideFor"),
-            Some(installed.as_str())
-        );
-        app.version_warnings(2).unwrap();
-        assert!(!app.settings().switch(Switch::VersionWarnings));
-        assert_eq!(app.settings().get("versionAsideFor"), None);
-    }
-
-    #[test]
-    fn a_language_file_is_started_once_and_listed_after_the_shipped_ones() {
-        let (_tmp, app) = installed();
-        assert!(app.start_language("a/b").is_err());
-        let file = app.start_language("Klingon").unwrap();
-        std::fs::write(&file, r#"{"Save": "Pol"}"#).unwrap();
-        assert_eq!(app.start_language("Klingon").unwrap(), file);
-        assert_eq!(
-            std::fs::read_to_string(&file).unwrap(),
-            r#"{"Save": "Pol"}"#
-        );
-        let names = app.languages();
-        assert_eq!(names.first().map(String::as_str), Some("English"));
-        assert_eq!(names.last().map(String::as_str), Some("Klingon"));
-        assert_eq!(app.language_table("Klingon")["Save"], "Pol");
-    }
-
-    #[test]
-    fn with_no_language_chosen_the_system_s_first_one_offered_is_used() {
-        let (_tmp, app) = installed();
-        let app = app.speaking(vec!["ja-JP".into(), "fr-CA".into(), "en-US".into()]);
-        assert_eq!(app.language_in_use(), "Français");
-        assert_eq!(app.speak()["Save"], "Enregistrer");
-        assert_eq!(app.settings_report().language, None);
-
-        let file = app.start_language("Nihongo").unwrap();
-        std::fs::write(&file, r#"{"@locale": "ja", "Save": "Hozon"}"#).unwrap();
-        assert_eq!(
-            app.language_in_use(),
-            "Nihongo",
-            "a language file added is offered"
-        );
-
-        app.set_setting("language", "Polski").unwrap();
-        assert_eq!(app.language_in_use(), "Polski");
-        app.set_setting("language", "").unwrap();
-        assert_eq!(app.language_in_use(), "Nihongo");
-
-        let (_tmp, app) = installed();
-        assert_eq!(app.speaking(vec!["xx".into()]).language_in_use(), "English");
-    }
-
-    #[test]
-    fn own_colours_are_written_for_one_theme_and_read_back_for_it() {
-        let (_tmp, app) = installed();
-        assert!(app.own_colours("dark").is_empty());
-        app.start_own_theme("dark", &json!({ "ink": "#ffffff" }))
-            .unwrap();
-        assert_eq!(app.own_colours("dark")["ink"], "#ffffff");
-        assert!(app.own_colours("light").is_empty());
-    }
-
-    #[test]
-    fn rimsort_rules_missing_say_why() {
-        let (_tmp, app) = installed();
-        let said = app.import_rimsort_rules();
-        assert!(said.to_string().contains("userRules.json"), "{said}");
-    }
+/// The families to choose from: "" for the system's first, then each once, by name ignoring case.
+pub fn font_choices(mut names: Vec<String>) -> Vec<String> {
+    names.sort_by_key(|name| name.to_lowercase());
+    names.dedup();
+    names.insert(0, String::new());
+    names
 }
+
+/// Where in `fonts` a name holds `wanted`, ignoring case; "" is the system's, named `system`.
+pub fn fonts_matching(fonts: &[impl AsRef<str>], wanted: &str, system: &str) -> Vec<usize> {
+    let wanted = wanted.to_lowercase();
+    let named = |name: &str| match name.is_empty() {
+        true => system.to_lowercase(),
+        false => name.to_lowercase(),
+    };
+    (0..fonts.len())
+        .filter(|&at| named(fonts[at].as_ref()).contains(&wanted))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests;

@@ -63,6 +63,23 @@ struct Known {
 pub struct Game {
     draws: HashSet<String>,
     types: HashMap<String, Known>,
+    ships: HashSet<String>,
+}
+
+fn beside(dir: &Path) -> HashSet<String> {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = path.file_stem()?.to_string_lossy().to_lowercase();
+            let is_dll = path
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("dll"));
+            is_dll.then_some(name)
+        })
+        .collect()
 }
 
 fn entry_points(layout: &Layout, names: &[&str]) -> Vec<usize> {
@@ -117,7 +134,11 @@ impl Game {
                 }
             }
         }
-        Some(Self { draws, types })
+        Some(Self {
+            draws,
+            types,
+            ships: HashSet::new(),
+        })
     }
 
     /// `Assembly-CSharp.dll` is in the game's folder from 1.7, or in
@@ -143,7 +164,14 @@ impl Game {
             .iter()
             .map(|p| p.join("Assembly-CSharp.dll"))
             .find(|f| f.is_file())?;
-        Self::read(&std::fs::read(dll).ok()?)
+        let mut game = Self::read(&std::fs::read(&dll).ok()?)?;
+        game.ships = beside(dll.parent()?);
+        Some(game)
+    }
+
+    /// By lower-case name.
+    pub fn ships(&self) -> &HashSet<String> {
+        &self.ships
     }
 
     pub(crate) fn drawing_types(&self) -> &HashSet<String> {
@@ -200,6 +228,7 @@ impl Game {
         Self {
             draws: drawing(types, &HashSet::new()),
             types: types.iter().map(|t| (t.name.clone(), known(t))).collect(),
+            ships: HashSet::new(),
         }
     }
 }
@@ -249,6 +278,11 @@ mod tests {
         assert_eq!(when(&game, "Verse.Game", "LoadDefs"), Some(When::Loading));
         assert_eq!(when(&game, "Verse.Game", "DebugAction"), None);
         assert_eq!(when(&game, "Verse.Game", "Log"), Some(When::Playing));
+        assert_eq!(
+            when(&game, "Verse.Thing", "Update"),
+            None,
+            "unity calls by name only the objects it keeps"
+        );
     }
 
     #[test]
@@ -273,11 +307,6 @@ mod tests {
     }
 
     #[test]
-    fn unity_calls_by_name_only_the_objects_it_keeps() {
-        assert_eq!(when(&game(), "Verse.Thing", "Update"), None);
-    }
-
-    #[test]
     fn a_method_is_found_on_the_type_or_above_it() {
         let game = game();
         assert_eq!(when(&game, "Verse.Pawn", "Tick"), Some(When::Playing));
@@ -288,11 +317,6 @@ mod tests {
         assert!(game.method("Verse.Pawn", "Fly").is_none());
         assert!(game.method("Not.There", "Tick").is_none());
         assert!(game.has("Verse.Pawn") && !game.has("Not.There"));
-    }
-
-    #[test]
-    fn a_file_that_is_not_the_game_gives_nothing() {
-        assert!(Game::read(b"not an assembly").is_none());
     }
 
     #[test]

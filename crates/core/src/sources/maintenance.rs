@@ -1,21 +1,28 @@
+use super::redownload::{not_an_id, note_workshop_id};
 use crate::base::error::{Error, Result};
+use crate::base::sandbox;
+use crate::rimworld::steam_log;
+use crate::rimworld::workshop::is_id;
 use crate::said;
 
 use std::path::{Path, PathBuf};
 
+/// Into a folder named by the Workshop id, as SteamCMD's downloads are, with the id noted in it.
 /// Nothing is replaced: a folder of that name refuses the copy.
-pub fn copy_to_local(mod_root: &Path, local_mods: &Path) -> Result<PathBuf> {
-    let name = mod_root
-        .file_name()
-        .ok_or_else(|| Error::refused(said!("the mod's folder has no name")))?;
-    let to = local_mods.join(name);
+pub fn copy_to_local(mod_root: &Path, workshop_id: &str, local_mods: &Path) -> Result<PathBuf> {
+    if !is_id(workshop_id) {
+        return Err(not_an_id(workshop_id));
+    }
+    let to = local_mods.join(workshop_id);
     if to.exists() {
         return Err(Error::refused(said!("{} is there already", to.display())));
     }
-    crate::base::walk::copy(mod_root, &to).map_err(|e| {
-        let _ = std::fs::remove_dir_all(&to);
-        Error::file(&to, e)
-    })?;
+    crate::base::walk::copy(mod_root, &to)
+        .map_err(|e| Error::file(&to, e))
+        .and_then(|()| note_workshop_id(&to, workshop_id))
+        .inspect_err(|_| {
+            let _ = std::fs::remove_dir_all(&to);
+        })?;
     Ok(to)
 }
 
@@ -102,7 +109,9 @@ pub struct Process {
 
 pub fn processes() -> Vec<Process> {
     use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
-    let mut system = System::new();
+    let Ok(mut system) = System::new() else {
+        return Vec::new();
+    };
     let wanted = ProcessRefreshKind::nothing()
         .with_exe(UpdateKind::Always)
         .with_cmd(UpdateKind::Always);
@@ -147,8 +156,13 @@ pub fn game_among(processes: &[Process], game_dir: &Path) -> bool {
     })
 }
 
-pub fn game_running(game_dir: &Path) -> bool {
-    game_among(&processes(), game_dir)
+/// Inside a Flatpak the list of processes holds only the sandbox's own, so Steam's word
+/// is taken: a game started outside Steam is not seen there.
+pub fn game_running(game_dir: &Path, home: &Path) -> bool {
+    match sandbox::sandboxed() {
+        true => steam_log::game_running(home),
+        false => game_among(&processes(), game_dir),
+    }
 }
 
 /// Splits at spaces outside quotes, and takes the quotes off. A quote left open runs to
@@ -271,11 +285,11 @@ mod tests {
                 }
             })
             .unwrap();
-        let seen = game_running(&game);
+        let seen = game_running(&game, tmp.path());
         running.kill().unwrap();
         running.wait().unwrap();
         assert!(seen);
-        assert!(!game_running(&game));
+        assert!(!game_running(&game, tmp.path()));
     }
 
     #[test]
@@ -285,17 +299,43 @@ mod tests {
         std::fs::create_dir_all(workshop.join("About")).unwrap();
         std::fs::write(workshop.join("About/About.xml"), "x").unwrap();
         std::fs::create_dir_all(&local).unwrap();
-        let made = copy_to_local(&workshop, &local).unwrap();
+        let made = copy_to_local(&workshop, "123", &local).unwrap();
         assert_eq!(made, local.join("123"));
         assert_eq!(
             std::fs::read_to_string(made.join("About/About.xml")).unwrap(),
             "x"
         );
         assert!(workshop.join("About/About.xml").is_file());
+        assert!(!workshop.join("About/PublishedFileId.txt").exists());
         assert_eq!(
-            copy_to_local(&workshop, &local).unwrap_err().kind(),
+            copy_to_local(&workshop, "123", &local).unwrap_err().kind(),
             crate::base::error::Kind::Refused
         );
+    }
+
+    #[test]
+    fn a_copy_keeps_its_workshop_id_and_the_one_its_author_shipped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let local = tmp.path().join("Mods");
+        std::fs::create_dir_all(&local).unwrap();
+        let noted = |made: PathBuf| {
+            std::fs::read_to_string(made.join("About/PublishedFileId.txt")).unwrap()
+        };
+        let bare = tmp.path().join("ws/123");
+        std::fs::create_dir_all(&bare).unwrap();
+        assert_eq!(noted(copy_to_local(&bare, "123", &local).unwrap()), "123");
+        let shipped = tmp.path().join("ws/456");
+        std::fs::create_dir_all(shipped.join("About")).unwrap();
+        std::fs::write(shipped.join("About/PublishedFileId.txt"), "456\n").unwrap();
+        assert_eq!(
+            noted(copy_to_local(&shipped, "456", &local).unwrap()),
+            "456\n"
+        );
+        assert_eq!(
+            copy_to_local(&bare, "../out", &local).unwrap_err().kind(),
+            crate::base::error::Kind::Refused
+        );
+        assert!(!tmp.path().join("out").exists());
     }
 
     #[test]

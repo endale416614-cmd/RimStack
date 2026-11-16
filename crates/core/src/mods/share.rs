@@ -41,6 +41,22 @@ pub fn listing(game_version: &str, mods: &[Entry]) -> String {
     text
 }
 
+/// RimSort writes `{packageid: x}` or `packageid: x`, in any case.
+fn tagged_ids(line: &str) -> Vec<&str> {
+    const TAG: &str = "packageid:";
+    let lower = line.to_ascii_lowercase();
+    lower
+        .match_indices(TAG)
+        .filter_map(|(at, _)| {
+            let rest = line[at + TAG.len()..].trim_start();
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '_')))
+                .unwrap_or(rest.len());
+            Some(&rest[..end]).filter(|id| !id.is_empty())
+        })
+        .collect()
+}
+
 pub fn ids_in(text: &str) -> Vec<String> {
     let reads_as_id = |s: &str| {
         let plain = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-');
@@ -50,6 +66,15 @@ pub fn ids_in(text: &str) -> Vec<String> {
     };
     let mut ids: Vec<String> = Vec::new();
     for line in text.lines().map(str::trim) {
+        let tagged = tagged_ids(line);
+        if !tagged.is_empty() {
+            for id in tagged.into_iter().map(crate::rimworld::id::fold) {
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+            continue;
+        }
         let bracketed = line
             .split('[')
             .skip(1)
@@ -172,13 +197,29 @@ mod tests {
             ),
             entry("RimWorld", "ludeon.rimworld", None),
         ];
+        let text = listing("1.6.4871 rev598", &mods);
         assert_eq!(
-            listing("1.6", &mods),
+            text,
             "Created with RimStack\n\
-             RimWorld game version this list was created for: 1.6\n\
+             RimWorld game version this list was created for: 1.6.4871 rev598\n\
              Total # of mods: 2\n\n\
              Harmony [brrainz.harmony][https://github.com/pardeike/HarmonyRimWorld]\n\
              RimWorld [ludeon.rimworld][No url specified]\n"
+        );
+        assert_eq!(ids_in(&text), ["brrainz.harmony", "ludeon.rimworld"]);
+    }
+
+    #[test]
+    fn a_rimsort_page_is_read_by_its_packageid_tokens() {
+        let page = "# RimWorld mod list
+1. Harmony {packageid: Brrainz.Harmony}
+Tools PackageId: Author.Tools and more
+{packageid: a.b} {PACKAGEID:c.d}
+PackageId: 
+";
+        assert_eq!(
+            ids_in(page),
+            ["brrainz.harmony", "author.tools", "a.b", "c.d"]
         );
     }
 

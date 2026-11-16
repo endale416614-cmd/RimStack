@@ -18,22 +18,51 @@ fn files(dir: &Path, into: &mut Vec<std::path::PathBuf>) {
     }
 }
 
-fn named(text: &str) -> Vec<&'static str> {
+/// The layers `text` names: `crate::mods::…`, `crate::mods;`, a group `crate::{…, mods::…}`,
+/// or `super::` as many times as `depth` (how deep the file's module is) and then the layer.
+fn named(text: &str, depth: usize) -> Vec<&'static str> {
     let mut found = Vec::new();
+    let ends = |rest: &str| {
+        rest.is_empty() || rest.starts_with("::") || rest.starts_with([';', ',', '}', ' '])
+    };
     for (layer, _) in LAYERS {
-        let direct = format!("crate::{layer}::");
+        let direct = format!("crate::{layer}");
+        let by_path = text
+            .match_indices(&direct)
+            .any(|(at, _)| ends(&text[at + direct.len()..]));
         let grouped = |at: usize| {
             let rest = &text[at..];
             let end = rest.find("};").unwrap_or(rest.len());
             let inside = &rest[..end];
-            inside.contains(&format!("{{{layer}::")) || inside.contains(&format!(" {layer}::"))
+            [format!("{{{layer}"), format!(" {layer}")]
+                .iter()
+                .any(|start| {
+                    inside
+                        .match_indices(start.as_str())
+                        .any(|(at, _)| ends(&inside[at + start.len()..]))
+                })
         };
         let in_group = text.match_indices("crate::{").any(|(at, _)| grouped(at));
-        if text.contains(&direct) || in_group {
+        let from_root = format!("{}{layer}::", "super::".repeat(depth));
+        let climbed = depth > 0
+            && text
+                .match_indices(&from_root)
+                .any(|(at, _)| !text[..at].ends_with("super::"));
+        if by_path || in_group || climbed {
             found.push(layer);
         }
     }
     found
+}
+
+/// How many `super::` lead from `file`'s module to the crate's root.
+fn depth(src: &Path, file: &Path) -> usize {
+    let inside = file.strip_prefix(src).unwrap();
+    let parts = inside.components().count();
+    match file.file_name().and_then(|n| n.to_str()) {
+        Some("mod.rs") => parts - 1,
+        _ => parts,
+    }
 }
 
 #[test]
@@ -45,7 +74,7 @@ fn no_layer_uses_one_above_it() {
         files(&src.join(layer), &mut all);
         for file in all {
             let text = std::fs::read_to_string(&file).unwrap();
-            for used in named(&text)
+            for used in named(&text, depth(&src, &file))
                 .into_iter()
                 .filter(|used| !allowed.contains(used))
             {
@@ -58,10 +87,20 @@ fn no_layer_uses_one_above_it() {
 
 #[test]
 fn a_use_of_a_layer_is_found_written_either_way() {
-    assert_eq!(named("use crate::mods::library::Library;"), ["mods"]);
+    assert_eq!(named("use crate::mods::library::Library;", 1), ["mods"]);
     assert_eq!(
-        named("use crate::{\n    base::error::Error,\n    kept::notes,\n};"),
+        named(
+            "use crate::{\n    base::error::Error,\n    kept::notes,\n};",
+            1
+        ),
         ["base", "kept"]
     );
-    assert!(named("use std::collections::HashMap;").is_empty());
+    assert_eq!(named("use crate::mods;", 1), ["mods"]);
+    assert_eq!(
+        named("use crate::{kept::{a, b}, mods};", 1),
+        ["mods", "kept"]
+    );
+    assert_eq!(named("use super::super::sources::x;", 2), ["sources"]);
+    assert!(named("use super::super::sources::x;", 3).is_empty());
+    assert!(named("use crate::modsy::x; use std::collections::HashMap;", 1).is_empty());
 }

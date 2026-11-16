@@ -146,6 +146,7 @@ mod tests {
         assert!(first.active && first.asking);
         assert!(first.list.len() < first.everything);
         assert_eq!(first.everything, 7);
+        app.settle_writes();
         assert_eq!(journal::read(&app.journal_file()).len(), 1);
         let mut now = first;
         let mut rounds = 0;

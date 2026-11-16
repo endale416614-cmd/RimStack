@@ -5,29 +5,67 @@ rust-version.workspace = true
 license.workspace = true
 version.workspace = true
 
+[lib]
+name = "rimstack_app"
+path = "src/lib.rs"
+
 [[bin]]
 name = "rimstack"
 path = "src/main.rs"
 
+[[example]]
+name = "shot"
+
+[features]
+# gpui-fast's developer tools, off in every package: frame times drawn over the window, the
+# element inspector, and code patched into the running app by `dx serve --hot-patch`.
+profiler = ["gpui/profiler"]
+inspector = ["gpui/inspector"]
+hot-reload = ["gpui/hot-reload"]
+
 [dependencies]
 rimstack-core = { path = "../core" }
-cxx = "1"
-cxx-qt = "0.10"
-cxx-qt-lib = { version = "0.10", features = ["full"] }
+# Pinned exactly: gpui-fast changes its API from one weekly release to the next (Apache-2.0).
+gpui = { package = "gpui-fast", version = "=0.1.14" }
+gpui_platform = { package = "gpui-fast-platform", version = "=0.1.14", features = ["wayland", "x11"] }
+futures = "0.3"
+# Previews decoded at the size they are shown, not whole; already built for gpui-fast.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+smallvec = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rayon = "1"
 trash = "5"
-# Local time for the names of kept lists; already built for cxx-qt-lib.
+# Local time for the names of kept lists.
 chrono = "0.4"
 # The languages the system is set to, to start in one of them (MIT/Apache-2.0).
 sys-locale = "0.3"
+# Digit grouping of a number in a sentence, from CLDR (Unicode-3.0); the ICU4X
+# family is already built for `icu_plurals`.
+icu_decimal = "2.3"
+icu_locale_core = "2.3"
+# The Steam Web API key lives in the system's credential store (MIT/Apache-2.0).
+keyring-core = "1"
+
+# Secret Service over D-Bus, in Rust: `crypto-rust` keeps OpenSSL and libdbus out, and zbus runs
+# its own thread, no async runtime of ours (MIT/Apache-2.0).
+[target.'cfg(target_os = "linux")'.dependencies]
+# `malloc_trim`, to give back what the scan freed; already built for gpui-fast.
+libc = "0.2"
+zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-native-keyring-store = { version = "1", default-features = false }
 
 [build-dependencies]
-cxx-qt-build = { version = "0.10", features = ["link_qt_object_files"] }
 # The icon in the Windows program, for its shortcuts and the taskbar (MIT).
 embed-resource = "3"
 
 [dev-dependencies]
 tempfile = "3"
 image = { version = "0.25", default-features = false, features = ["png"] }
+gpui = { package = "gpui-fast", version = "=0.1.14", features = ["test-support"] }
+gpui_platform = { package = "gpui-fast-platform", version = "=0.1.14", features = ["wayland", "x11", "test-support"] }

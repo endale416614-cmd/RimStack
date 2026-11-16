@@ -74,6 +74,10 @@ impl Manifest {
     pub fn is_empty(&self) -> bool {
         self.made.is_empty()
     }
+
+    pub fn lists(&self, dds: &Path) -> bool {
+        self.made.contains_key(dds)
+    }
 }
 
 /// FNV-1a, as the manifest records it.
@@ -83,7 +87,7 @@ fn hash(bytes: &[u8]) -> u64 {
     })
 }
 
-fn fingerprint(path: &Path) -> Option<(u64, u64)> {
+pub(crate) fn fingerprint(path: &Path) -> Option<(u64, u64)> {
     let meta = std::fs::metadata(path).ok()?;
     let modified = meta.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
     Some((meta.len(), modified.as_secs()))
@@ -99,7 +103,7 @@ fn pngs_under(dir: &Path, into: &mut Vec<PathBuf>) {
     into.extend(files.filter(|file| has_extension(file, "png")));
 }
 
-fn is_textures(path: &Path) -> bool {
+pub(crate) fn is_textures(path: &Path) -> bool {
     path.file_name()
         .is_some_and(|n| n.eq_ignore_ascii_case("textures"))
 }
