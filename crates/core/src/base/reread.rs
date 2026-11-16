@@ -1,9 +1,10 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
-use crate::base::locks::Shared;
+use crate::base::locks::{Held, Shared};
 
 pub struct Reread<T> {
     now: RwLock<Option<Arc<T>>>,
+    reading: Mutex<()>,
 }
 
 impl<T> Default for Reread<T> {
@@ -16,6 +17,7 @@ impl<T> Reread<T> {
     pub const fn new() -> Self {
         Self {
             now: RwLock::new(None),
+            reading: Mutex::new(()),
         }
     }
 
@@ -24,10 +26,18 @@ impl<T> Reread<T> {
         if let Some(known) = known {
             return known;
         }
+        crate::base::waits::slow(std::any::type_name::<T>());
+        let _alone = self.reading.held();
+        if let Some(known) = self.now.reading().clone() {
+            return known;
+        }
         let fresh = Arc::new(read());
-        let mut now = self.now.writing();
-        // Two threads may both have read: the first one's stands.
-        now.get_or_insert(fresh).clone()
+        self.now.writing().get_or_insert(fresh).clone()
+    }
+
+    /// What was read, if anything has been, never waiting on a reading.
+    pub fn now(&self) -> Option<Arc<T>> {
+        self.now.reading().clone()
     }
 
     pub fn put(&self, fresh: T) {
@@ -38,6 +48,26 @@ impl<T> Reread<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn threads_asking_at_once_read_once() {
+        let counted: Arc<Reread<usize>> = Arc::new(Reread::new());
+        let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let asking: Vec<_> = (0..8)
+            .map(|_| {
+                let (counted, reads) = (counted.clone(), reads.clone());
+                std::thread::spawn(move || {
+                    *counted.get(|| {
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                        reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    })
+                })
+            })
+            .collect();
+        let got: Vec<usize> = asking.into_iter().map(|t| t.join().unwrap()).collect();
+        assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(got.iter().all(|&g| g == 0));
+    }
 
     #[test]
     fn it_is_read_once_until_put_again_and_the_old_reading_is_freed() {

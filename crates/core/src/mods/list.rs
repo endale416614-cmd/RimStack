@@ -1,5 +1,8 @@
+use crate::mods::facts::Facts;
 use crate::mods::library::ModId;
-use std::collections::HashSet;
+use filter::Filter;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /// Earlier variants load earlier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -81,6 +84,8 @@ pub struct Mod {
     pub name: String,
     pub author: String,
     pub version: String,
+    /// The latest game version its About.xml lists; empty when it lists none.
+    pub latest_game: String,
     pub category: Category,
     /// `None` for a mod that is not installed and for demo data.
     pub installed: Option<ModId>,
@@ -88,6 +93,8 @@ pub struct Mod {
     pub local: bool,
     pub workshop: bool,
     pub git: bool,
+    /// Left out of the list unless the filter asks for it with `is:leftover`.
+    pub leftover: bool,
     pub code: bool,
     /// Lower case `type.method`.
     pub patched: std::sync::Arc<[String]>,
@@ -95,6 +102,14 @@ pub struct Mod {
     pub sub: String,
     /// Microseconds it took at the game's last start, where measured.
     pub load_micros: Option<u32>,
+    /// Seconds since 1970 when Steam last updated it; Workshop mods only.
+    pub updated: Option<u64>,
+    /// Bytes, as Steam records them; Workshop mods only.
+    pub size: Option<u64>,
+    /// When its folder was made: for a Workshop mod, its first download.
+    pub downloaded: Option<u64>,
+    /// Since when it has been in the saved load order.
+    pub activated: Option<u64>,
     /// Its own category, chosen or worked out; `category` is where it sits, which a rule can
     /// make an earlier one. A sort starts from this.
     pub filed: Category,
@@ -106,10 +121,109 @@ pub struct Mod {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SortKey {
+    Group,
     Name,
     Author,
     Version,
+    PackageId,
+    Updated,
+    Downloaded,
+    Activated,
+    Size,
     Load,
+}
+
+impl SortKey {
+    pub const ALL: [SortKey; 10] = [
+        SortKey::Group,
+        SortKey::Name,
+        SortKey::Author,
+        SortKey::Version,
+        SortKey::PackageId,
+        SortKey::Updated,
+        SortKey::Downloaded,
+        SortKey::Activated,
+        SortKey::Size,
+        SortKey::Load,
+    ];
+
+    /// Kept in the settings and handed to the window: never reworded.
+    pub fn key(self) -> &'static str {
+        match self {
+            SortKey::Group => "group",
+            SortKey::Name => "name",
+            SortKey::Author => "author",
+            SortKey::Version => "version",
+            SortKey::PackageId => "package",
+            SortKey::Updated => "updated",
+            SortKey::Downloaded => "downloaded",
+            SortKey::Activated => "activated",
+            SortKey::Size => "size",
+            SortKey::Load => "load",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.key() == key)
+    }
+
+    /// Shown one way only: asked again, it gives back the list's own order.
+    pub fn turns(self) -> bool {
+        self != SortKey::Group
+    }
+
+    pub fn starts_descending(self) -> bool {
+        matches!(
+            self,
+            SortKey::Updated | SortKey::Downloaded | SortKey::Activated | SortKey::Size
+        )
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum SortValue {
+    Text(String),
+    Number(u64),
+}
+
+type SortedBy = (Option<SortValue>, String);
+
+fn sorted_by(m: &Mod, key: SortKey) -> SortedBy {
+    let tie = match key {
+        SortKey::Name => String::new(),
+        _ => m.name.to_lowercase(),
+    };
+    (sort_value(m, key), tie)
+}
+
+fn sort_value(m: &Mod, key: SortKey) -> Option<SortValue> {
+    let text = |t: &str| (!t.is_empty()).then(|| SortValue::Text(t.to_lowercase()));
+    match key {
+        SortKey::Group => text(&m.sub),
+        SortKey::Name => text(&m.name),
+        SortKey::Author => text(&m.author),
+        SortKey::Version => text(&m.version),
+        SortKey::PackageId => text(&m.id),
+        SortKey::Updated => m.updated.map(SortValue::Number),
+        SortKey::Downloaded => m.downloaded.map(SortValue::Number),
+        SortKey::Activated => m.activated.map(SortValue::Number),
+        SortKey::Size => m.size.map(SortValue::Number),
+        SortKey::Load => m.load_micros.map(|micros| SortValue::Number(micros.into())),
+    }
+}
+
+/// A mod without the value comes last either way; mods with the same value go by name.
+fn sorted<T>(items: Vec<T>, by: impl Fn(&T) -> SortedBy, descending: bool) -> Vec<T> {
+    let mut keyed: Vec<(SortedBy, T)> = items.into_iter().map(|item| (by(&item), item)).collect();
+    keyed.sort_by(|((a, a_name), _), ((b, b_name), _)| {
+        let by_value = match descending {
+            true => b.cmp(a),
+            false => a.cmp(b),
+        };
+        let missing = a.is_none().cmp(&b.is_none());
+        missing.then(by_value).then_with(|| a_name.cmp(b_name))
+    });
+    keyed.into_iter().map(|(_, item)| item).collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -129,14 +243,6 @@ pub enum Row {
     },
 }
 
-/// After `Inserted` or `Removed`, the header at `first - 1` also changed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Change {
-    Reset,
-    Inserted { first: usize, count: usize },
-    Removed { first: usize, count: usize },
-}
-
 pub fn runs(mods: &[Mod]) -> usize {
     let changes = mods.windows(2).filter(|w| w[0].category != w[1].category);
     changes.count() + usize::from(!mods.is_empty())
@@ -151,30 +257,27 @@ pub struct GroupedList {
     filter: Filter,
     /// Which list this is, as the filter last said; `None` lets `is:active` and `is:inactive` pass.
     side: Option<Side>,
+    left_out: LeftOut,
+    unmatched: bool,
     /// Empty until `set_flags`, and again after the order changes.
     flags: Vec<u16>,
     grouped: bool,
     shown_by: Option<(SortKey, bool)>,
     rows: Vec<Row>,
+    facts: Arc<HashMap<ModId, Arc<Facts>>>,
+    /// While held, the rows are made again only once, when let go.
+    held: bool,
 }
 
 fn haystack(m: &Mod) -> String {
     format!("{} {}", m.name, m.author).to_lowercase()
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct Filter {
-    words: Vec<String>,
-    authors: Vec<String>,
-    tags: Vec<String>,
-    local: bool,
-    workshop: bool,
-    git: bool,
-    code: bool,
-    patches: Vec<String>,
-    flags: u16,
-    only: Option<Side>,
-    both: bool,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LeftOut {
+    Dimmed,
+    #[default]
+    Hidden,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -206,70 +309,7 @@ pub mod flag {
     pub const DUPLICATE: u16 = 64;
     pub const NEW: u16 = 128;
     pub const CHANGED: u16 = 256;
-}
-
-impl Filter {
-    fn parse(text: &str) -> Self {
-        let mut filter = Self::default();
-        for term in text.to_lowercase().split_whitespace() {
-            match term.split_once(':') {
-                Some(("author", name)) if !name.is_empty() => filter.authors.push(name.to_string()),
-                Some(("tag", label)) if !label.is_empty() => filter.tags.push(label.to_string()),
-                Some(("is", "local")) => filter.local = true,
-                Some(("is", "workshop")) => filter.workshop = true,
-                Some(("is", "git")) => filter.git = true,
-                Some(("is", "active")) => filter.ask(Side::Active),
-                Some(("is", "inactive")) => filter.ask(Side::Inactive),
-                Some(("has", "code")) => filter.code = true,
-                Some(("patches", method)) if !method.is_empty() => {
-                    filter.patches.push(method.to_string())
-                }
-                Some(("is", "error")) => filter.flags |= flag::ERROR,
-                Some(("is", "warning")) => filter.flags |= flag::WARNING,
-                Some(("is", "conflict")) => filter.flags |= flag::CONFLICT,
-                Some(("is", "updated")) => filter.flags |= flag::UPDATED,
-                Some(("is", "notinsave")) => filter.flags |= flag::NOT_IN_SAVE,
-                Some(("is", "recent")) => filter.flags |= flag::RECENT,
-                Some(("is", "duplicate")) => filter.flags |= flag::DUPLICATE,
-                Some(("is", "new")) => filter.flags |= flag::NEW,
-                Some(("is", "changed")) => filter.flags |= flag::CHANGED,
-                _ => filter.words.push(term.to_string()),
-            }
-        }
-        filter
-    }
-
-    fn ask(&mut self, side: Side) {
-        self.both |= self.only.is_some_and(|asked| asked != side);
-        self.only = Some(side);
-    }
-
-    fn shuts(&self, side: Option<Side>) -> bool {
-        self.both || side.zip(self.only).is_some_and(|(side, only)| side != only)
-    }
-
-    fn is_empty(&self) -> bool {
-        *self == Self::default()
-    }
-
-    fn admits(&self, m: &Mod, haystack: &str, flags: u16) -> bool {
-        if flags & self.flags != self.flags {
-            return false;
-        }
-        let author = || m.author.to_lowercase();
-        let tagged = |wanted: &String| m.tags.iter().any(|t| t.to_lowercase().starts_with(wanted));
-        self.words.iter().all(|w| haystack.contains(w))
-            && self.authors.iter().all(|a| author().contains(a))
-            && self.tags.iter().all(tagged)
-            && (!self.local || m.local)
-            && (!self.workshop || m.workshop)
-            && (!self.git || m.git)
-            && (!self.code || m.code)
-            && self
-                .patches
-                .iter()
-                .all(|p| m.patched.iter().any(|at| at.contains(p)))
-    }
+    pub const IN_SEARCH: u16 = 512;
 }
 
 impl GroupedList {
@@ -283,13 +323,27 @@ impl GroupedList {
             collapsed_subs: HashSet::new(),
             filter: Filter::default(),
             side: None,
+            left_out: LeftOut::default(),
+            unmatched: false,
             flags: Vec::new(),
             grouped: true,
             shown_by: None,
             rows: Vec::new(),
+            facts: Arc::default(),
+            held: false,
         };
         list.rebuild();
         list
+    }
+
+    /// Many edits in a row: the rows stay as they were until `let_go`.
+    pub fn hold(&mut self) {
+        self.held = true;
+    }
+
+    pub fn let_go(&mut self) {
+        self.held = false;
+        self.rebuild();
     }
 
     pub fn flat(mods: Vec<Mod>) -> Self {
@@ -310,18 +364,23 @@ impl GroupedList {
     /// Changing the order forgets it.
     pub fn set_flags(&mut self, flags: Vec<u16>) {
         self.flags = flags;
-        if self.filter.flags != 0 {
+        if self.filter.reads_flags() {
             self.rebuild();
         }
     }
 
-    pub fn arrange(&mut self, by_name: bool) {
+    pub fn flagged(&self, mark: u16) -> usize {
+        self.flags.iter().filter(|flags| *flags & mark != 0).count()
+    }
+
+    /// `None` puts it in category order, under headings.
+    pub fn arrange(&mut self, order: Option<(SortKey, bool)>) {
         let mut mods = std::mem::take(&mut self.mods);
-        match by_name {
-            true => mods.sort_by_cached_key(|m| m.name.to_lowercase()),
-            false => mods.sort_by_cached_key(|m| (m.category, m.name.to_lowercase())),
+        match order {
+            Some((key, descending)) => mods = sorted(mods, |m| sorted_by(m, key), descending),
+            None => mods.sort_by_cached_key(|m| (m.category, m.name.to_lowercase())),
         }
-        self.grouped = !by_name;
+        self.grouped = order.is_none();
         self.set_mods(mods);
     }
 
@@ -375,6 +434,10 @@ impl GroupedList {
         self.rebuild();
     }
 
+    pub fn shown_by(&self) -> Option<(SortKey, bool)> {
+        self.shown_by
+    }
+
     pub fn is_grouped(&self) -> bool {
         self.grouped
     }
@@ -391,8 +454,41 @@ impl GroupedList {
         self.rebuild();
     }
 
+    pub fn set_facts(&mut self, facts: Arc<HashMap<ModId, Arc<Facts>>>) {
+        self.facts = facts;
+        if self.filter.needs_facts() {
+            self.rebuild();
+        }
+    }
+
+    pub fn needs_facts(&self) -> bool {
+        self.filter.needs_facts() && !self.filter.shuts(self.side)
+    }
+
+    pub fn unread(&self) -> usize {
+        if !self.filter.needs_facts() || self.filter.shuts(self.side) {
+            return 0;
+        }
+        let installed = self.mods.iter().filter_map(|m| m.installed);
+        installed.filter(|id| !self.facts.contains_key(id)).count()
+    }
+
     pub fn matching(&self) -> usize {
+        if self.unmatched {
+            return 0;
+        }
         (0..self.mods.len()).filter(|&i| self.matches(i)).count()
+    }
+
+    pub fn left_out(&self) -> Option<LeftOut> {
+        self.unmatched.then_some(self.left_out)
+    }
+
+    pub fn set_left_out(&mut self, left_out: LeftOut) {
+        if self.left_out != left_out {
+            self.left_out = left_out;
+            self.rebuild();
+        }
     }
 
     pub fn set_filter(&mut self, text: &str) {
@@ -407,36 +503,17 @@ impl GroupedList {
         self.rebuild();
     }
 
-    /// Qt must be told which rows go or come before the change.
-    pub fn toggling(&self, category: Category) -> Change {
-        if self.mods.iter().any(|m| !m.sub.is_empty()) {
-            return Change::Reset;
-        }
-        let mut headers = self.rows.iter().enumerate().filter_map(|(row, r)| match r {
-            Row::Header {
-                category: c, count, ..
-            } if *c == category => Some((row, *count)),
-            _ => None,
-        });
-        match (headers.next(), headers.next()) {
-            (Some((row, count)), None) if count > 0 => {
-                let first = row + 1;
-                match self.collapsed.contains(&category) {
-                    true => Change::Inserted { first, count },
-                    false => Change::Removed { first, count },
-                }
-            }
-            _ => Change::Reset,
-        }
-    }
-
-    pub fn toggle(&mut self, category: Category) -> Change {
-        let change = self.toggling(category);
+    pub fn toggle(&mut self, category: Category) {
         if !self.collapsed.remove(&category) {
             self.collapsed.insert(category);
         }
         self.rebuild();
-        change
+    }
+
+    pub fn keep_folds_of(&mut self, earlier: &GroupedList) {
+        self.collapsed.clone_from(&earlier.collapsed);
+        self.collapsed_subs.clone_from(&earlier.collapsed_subs);
+        self.rebuild();
     }
 
     pub fn move_mod(&mut self, from: usize, to: usize) {
@@ -478,40 +555,57 @@ impl GroupedList {
         Some(m)
     }
 
+    fn listed(&self, index: usize) -> bool {
+        !self.mods[index].leftover || self.filter.leftover
+    }
+
+    pub fn counted(&self) -> usize {
+        self.mods.iter().filter(|m| !m.leftover).count()
+    }
+
     fn matches(&self, index: usize) -> bool {
+        if !self.listed(index) {
+            return false;
+        }
         let flags = self.flags.get(index).copied().unwrap_or(0);
+        let facts = self.mods[index]
+            .installed
+            .and_then(|id| self.facts.get(&id));
+        let facts = facts.map(|facts| &**facts);
         if self.filter.shuts(self.side) {
             return false;
         }
         self.filter.is_empty()
             || self
                 .filter
-                .admits(&self.mods[index], &self.haystacks[index], flags)
+                .admits(&self.mods[index], &self.haystacks[index], flags, facts)
+    }
+
+    fn shows(&self, index: usize) -> bool {
+        match self.unmatched {
+            true => self.left_out == LeftOut::Dimmed && self.listed(index),
+            false => self.matches(index),
+        }
     }
 
     fn rebuild(&mut self) {
+        if self.held {
+            return;
+        }
+        self.unmatched = !self.filter.is_empty() && !(0..self.mods.len()).any(|i| self.matches(i));
+        if let Some((SortKey::Group, _)) = self.shown_by {
+            self.rows = self.gathered();
+            return;
+        }
         if let Some((key, descending)) = self.shown_by {
-            let mut shown: Vec<usize> = (0..self.mods.len()).filter(|&i| self.matches(i)).collect();
-            let text = |i: usize| match key {
-                SortKey::Author => self.mods[i].author.to_lowercase(),
-                SortKey::Version => self.mods[i].version.to_lowercase(),
-                _ => self.mods[i].name.to_lowercase(),
-            };
-            match key {
-                SortKey::Load => {
-                    shown.sort_by_key(|&i| self.mods[i].load_micros);
-                }
-                _ => shown.sort_by_cached_key(|&i| text(i)),
-            }
-            if descending {
-                shown.reverse();
-            }
+            let shown: Vec<usize> = (0..self.mods.len()).filter(|&i| self.shows(i)).collect();
+            let shown = sorted(shown, |&i| sorted_by(&self.mods[i], key), descending);
             self.rows = shown.into_iter().map(|index| Row::Mod { index }).collect();
             return;
         }
         if !self.grouped {
             self.rows = (0..self.mods.len())
-                .filter(|&i| self.matches(i))
+                .filter(|&i| self.shows(i))
                 .map(|index| Row::Mod { index })
                 .collect();
             return;
@@ -524,21 +618,47 @@ impl GroupedList {
             while end < self.mods.len() && self.mods[end].category == category {
                 end += 1;
             }
-            let visible: Vec<usize> = (start..end).filter(|&i| self.matches(i)).collect();
-            if !visible.is_empty() {
-                let collapsed = self.collapsed.contains(&category);
-                rows.push(Row::Header {
-                    category,
-                    count: visible.len(),
-                    collapsed,
-                });
-                if !collapsed {
-                    self.push_with_subs(&mut rows, &visible);
-                }
-            }
+            let visible: Vec<usize> = (start..end).filter(|&i| self.shows(i)).collect();
+            self.push_category(&mut rows, category, &visible);
             start = end;
         }
         self.rows = rows;
+    }
+
+    /// Each category once and each of its tags once, wherever their mods sit: the untagged first,
+    /// then the tags in the order their first mods load, each tag's mods in load order.
+    fn gathered(&self) -> Vec<Row> {
+        let mut shown: Vec<usize> = (0..self.mods.len()).filter(|&i| self.shows(i)).collect();
+        let mut first_at: HashMap<(Category, &str), usize> = HashMap::new();
+        for &i in &shown {
+            let m = &self.mods[i];
+            first_at.entry((m.category, m.sub.as_str())).or_insert(i);
+        }
+        shown.sort_by_key(|&i| {
+            let m = &self.mods[i];
+            let tag_at = first_at[&(m.category, m.sub.as_str())];
+            (m.category, !m.sub.is_empty(), tag_at)
+        });
+        let mut rows = Vec::with_capacity(shown.len() + Category::ALL.len());
+        for run in shown.chunk_by(|&a, &b| self.mods[a].category == self.mods[b].category) {
+            self.push_category(&mut rows, self.mods[run[0]].category, run);
+        }
+        rows
+    }
+
+    fn push_category(&self, rows: &mut Vec<Row>, category: Category, visible: &[usize]) {
+        if visible.is_empty() {
+            return;
+        }
+        let collapsed = self.collapsed.contains(&category);
+        rows.push(Row::Header {
+            category,
+            count: visible.len(),
+            collapsed,
+        });
+        if !collapsed {
+            self.push_with_subs(rows, visible);
+        }
     }
 
     fn push_with_subs(&self, rows: &mut Vec<Row>, visible: &[usize]) {
@@ -607,6 +727,9 @@ pub fn edge_of_run(mods: &[Mod], at: usize, top: bool) -> usize {
     }
 }
 
+mod filter;
+mod moves;
 mod navigate;
+pub mod offers;
 #[cfg(test)]
 mod tests;

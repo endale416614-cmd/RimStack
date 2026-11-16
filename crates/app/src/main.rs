@@ -1,28 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+use rimstack_app::{App, STARTED, jobs, ui, words};
 use rimstack_core::said;
-
-mod changes;
-mod downloads_data;
-mod game_data;
-mod hub;
-mod jobs;
-mod lists_data;
-mod logs_data;
-mod mod_rows;
-mod mods_data;
-mod qml;
-mod reports;
-mod saves_data;
-mod search_data;
-mod settings_data;
-mod textures_data;
-mod words;
-mod workspace;
-
-pub use workspace::*;
-
-use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -78,19 +57,7 @@ fn steamworks(app: &App, request: &str) -> std::process::ExitCode {
     }
 }
 
-/// `--check` saves the load order it finds to a copy of the settings, never the real ones.
-fn check_on_real_settings() -> bool {
-    let checking = std::env::args().any(|a| a.starts_with("--check"));
-    checking && std::env::var_os("RIMSTACK_CONFIG").is_none()
-}
-
 fn main() -> std::process::ExitCode {
-    if check_on_real_settings() {
-        eprintln!(
-            "--check saves the load order: run tools/check-app.sh, which gives it a copy through RIMSTACK_CONFIG"
-        );
-        return std::process::ExitCode::from(2);
-    }
     let steam_request =
         std::env::args().find_map(|a| a.strip_prefix("--steamworks=").map(String::from));
     // Before any thread is started, as changing the environment must be.
@@ -117,48 +84,17 @@ fn main() -> std::process::ExitCode {
     words::show_in(words::Words::of(&app.speak()));
     if !std::env::args().any(|a| a == "--demo" || a == "--selftest") {
         let early = app.clone();
-        crate::jobs::spawn("early read", move || {
+        jobs::spawn("early read", move || {
             early.settle_downloads();
             early.community();
             early.library();
         });
     }
     #[cfg(target_os = "linux")]
-    if !std::env::args().any(|a| a.starts_with("--shot") || a.starts_with("--check")) {
+    if !std::env::args().any(|a| a.starts_with("--shot")) {
         put_among_applications();
     }
-    let mut qt = QGuiApplication::new();
-    hub::use_window_icon();
-    let font = app.settings().get("font").map(String::from);
-    if let Some(family) = font {
-        settings_data::qobject::set_font_family(&QString::from(&family));
-    }
-    if let Some(qt) = qt.as_mut() {
-        QGuiApplication::set_organization_name(qt, &QString::from("RimStack"));
-    }
-    if let Some(qt) = qt.as_mut() {
-        QGuiApplication::set_application_name(qt, &QString::from("RimStack"));
-    }
-    QGuiApplication::set_desktop_file_name(&QString::from("rimstack"));
-    hub::hand_over(app);
-    let mut engine = QQmlApplicationEngine::new();
-
-    if let Some(mut engine) = engine.as_mut() {
-        // Without its window the app would run on unseen: stop instead.
-        engine
-            .as_mut()
-            .on_object_creation_failed(|_, _| std::process::exit(1))
-            .release();
-        engine.load(&QUrl::from("qrc:/qt/qml/RimStack/Ui/qml/Main.qml"));
-    }
-    // Checks end with 1 when one failed.
-    let ended = qt.as_mut().map_or(1, |qt| qt.exec());
-    std::process::ExitCode::from(u8::try_from(ended).unwrap_or(1))
+    ui::run(app.clone(), ui::Options::from_args(std::env::args()));
+    app.settle_writes();
+    std::process::ExitCode::SUCCESS
 }
-
-#[cfg(test)]
-mod layers;
-#[cfg(test)]
-mod shapes;
-#[cfg(test)]
-mod shapes_of;

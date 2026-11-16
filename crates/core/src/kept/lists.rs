@@ -37,7 +37,7 @@ pub fn save(dir: &Path, name: &str, ids: &[String]) -> Result<(), Error> {
     let path = file_for(dir, name);
     if let Some((other, _)) = read(&path).filter(|(kept, _)| kept != name.trim()) {
         return Err(Error::refused(said!(
-            "The list {} is kept under the same file name. Give this one another name.",
+            "The list {} already uses the same file name. Give this one another name.",
             other
         )));
     }

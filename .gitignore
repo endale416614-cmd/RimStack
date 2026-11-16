@@ -1,8 +1,8 @@
 /target
 *.swp
 .superpowers/
-crates/app/.qmlls.ini
 CLAUDE.md
 docs/
 .claude/
 .idea/
+prototypes/

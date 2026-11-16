@@ -16,9 +16,12 @@ Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory $stage | Out-Null
 Copy-Item "target\$cargoProfile\rimstack.exe" $stage
 
-$deploy = if ($env:QT_BIN) { Join-Path $env:QT_BIN "windeployqt.exe" } else { "windeployqt" }
-& $deploy --release --qmldir crates\app\qml --no-translations --compiler-runtime "$stage\rimstack.exe"
-if ($LASTEXITCODE) { exit $LASTEXITCODE }
+# The C++ runtime beside the program: the DDS encoder's prebuilt MSVC libraries link it dynamically.
+$crt = Get-ChildItem (Join-Path $env:VCToolsRedistDir "x64") -Directory -Filter "Microsoft.VC*.CRT" | Select-Object -First 1
+if (-not $crt) { Write-Error "No C++ runtime under VCToolsRedistDir; run from a Developer prompt" }
+foreach ($dll in "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll") {
+    Copy-Item (Join-Path $crt.FullName $dll) $stage
+}
 
 function Sign($file) {
     if (-not $env:SIGN_CERT) { return }

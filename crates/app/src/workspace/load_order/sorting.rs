@@ -26,20 +26,19 @@ impl SortCount {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, PartialEq)]
 pub struct SortGroup {
     pub name: &'static str,
     pub moves: Vec<SortMove>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SortMove {
     pub name: String,
     pub from: usize,
     pub to: usize,
-    /// -1 for a mod that is not installed.
-    pub mod_id: i32,
+    pub mod_id: Option<ModId>,
     pub why: Sentence,
 }
 
@@ -96,6 +95,18 @@ impl LoadOrder {
             self.end_preview();
             self.settle(app);
         }
+    }
+
+    /// Sort's preview kept as the load order, in the history with the list before it: what to
+    /// tell, `None` with no preview.
+    pub fn keep_sort_noted(&mut self, app: &App) -> Option<Sentence> {
+        self.preview.as_ref()?;
+        let moves = self.sort_move_count();
+        let before = app.snapshot("@sorting", app.session().current());
+        self.keep_sort(app);
+        let sorted = say_n!(moves, "Sorted: {} mod moved", "Sorted: {} mods moved");
+        app.note_change(sorted.clone(), before.as_deref());
+        Some(sorted)
     }
 
     pub fn drop_sort(&mut self, app: &App) {
@@ -159,7 +170,7 @@ impl LoadOrder {
                         name: m.name.clone(),
                         from,
                         to: now + 1,
-                        mod_id: m.installed.map_or(-1, ModId::to_qml),
+                        mod_id: m.installed,
                         why: why.text.clone(),
                     })
                     .collect(),

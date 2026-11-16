@@ -31,11 +31,15 @@ pub fn steam_address(arguments: &str) -> String {
     }
 }
 
+fn through_steam(sandboxed: bool, directly: bool) -> bool {
+    sandboxed || !directly
+}
+
 impl App {
     pub fn game_running(&self) -> bool {
         let paths = self.paths();
         let game = paths.game.as_deref();
-        game.is_some_and(rimstack_core::sources::maintenance::game_running)
+        game.is_some_and(|game| rimstack_core::sources::maintenance::game_running(game, &self.home))
     }
 
     /// Slow: copies the newest save. Never run it on the window's thread.
@@ -73,7 +77,7 @@ impl App {
             let arguments = settings.get("launchArguments").unwrap_or_default();
             (settings.launch_directly(), arguments.to_string())
         };
-        if !directly {
+        if through_steam(rimstack_core::base::sandbox::sandboxed(), directly) {
             return Ok(Some(steam_address(&arguments)));
         }
         let paths = self.paths();
@@ -96,13 +100,21 @@ impl App {
         let (library, _) = loaded.as_ref().as_ref().ok()?;
         let last = launches::read(&self.launches_file()).pop()?;
         let saved = self.session().saved().to_vec();
-        let official = |m: &rimstack_core::mods::list::Mod| {
-            let installed = m.installed.and_then(|i| library.get(i));
-            installed.is_some_and(|i| i.source == Source::Official)
-        };
-        let emptied = library.arrange(&saved).active.iter().all(official);
-        (emptied && last.ids.len() > saved.len()).then_some(last.ids)
+        emptied_by_game(library, &saved, &last).then_some(last.ids)
     }
+}
+
+/// On its first start on a new version the game leaves only its own mods in `ModsConfig.xml`.
+pub fn emptied_by_game(
+    library: &rimstack_core::mods::library::Library,
+    saved: &[String],
+    last: &launches::Launch,
+) -> bool {
+    let official = |m: &rimstack_core::mods::list::Mod| {
+        let installed = m.installed.and_then(|i| library.get(i));
+        installed.is_some_and(|i| i.source == Source::Official)
+    };
+    last.ids.len() > saved.len() && library.arrange(saved).active.iter().all(official)
 }
 
 #[cfg(test)]
@@ -120,16 +132,11 @@ mod tests {
     }
 
     #[test]
-    fn a_launch_is_recorded_with_its_list_and_steam_starts_the_game_by_default() {
-        let (_tmp, app) = installed();
-        app.record_launch();
-        let record = launches::read(&app.launches_file());
-        assert_eq!(record.len(), 1);
-        assert_eq!(record[0].ids, app.session().current().to_vec());
-        assert_eq!(
-            app.start_game().unwrap().as_deref(),
-            Some("steam://rungameid/294100")
-        );
+    fn steam_starts_the_game_in_a_flatpak_whatever_the_setting_says() {
+        assert!(through_steam(false, false));
+        assert!(!through_steam(false, true));
+        assert!(through_steam(true, false));
+        assert!(through_steam(true, true));
     }
 
     #[test]
@@ -183,8 +190,47 @@ mod tests {
             app.launch(true).unwrap().as_deref(),
             Some("steam://rungameid/294100")
         );
-        assert_eq!(launches::read(&app.launches_file()).len(), 1);
+        let record = launches::read(&app.launches_file());
+        assert_eq!(record.len(), 1);
+        assert_eq!(record[0].ids, app.session().current().to_vec());
         app.launch(false).unwrap();
         assert_eq!(launches::read(&app.launches_file()).len(), 1);
+    }
+
+    /// What the game watcher's look every 2 s costs: the stamps of every mod and the game's
+    /// files, and whether the game runs.
+    #[test]
+    #[ignore = "reads this machine's own install; RIMSTACK_TIME_HOME names a scratch folder"]
+    fn times_the_watchers_look_on_this_machines_install() {
+        let Ok(scratch) = std::env::var("RIMSTACK_TIME_HOME") else {
+            return;
+        };
+        let scratch = std::path::PathBuf::from(scratch);
+        let home = std::path::PathBuf::from(std::env::var("HOME").unwrap());
+        let app = App::new(
+            home,
+            &scratch.join("settings"),
+            &scratch.join("data"),
+            Default::default(),
+        );
+        let count = app
+            .library()
+            .as_ref()
+            .as_ref()
+            .map_or(0, |(l, _)| l.installed.len());
+        app.stamps();
+        let mut took: Vec<std::time::Duration> = (0..20)
+            .map(|_| {
+                let started = std::time::Instant::now();
+                let _ = (app.game_running(), app.stamps());
+                started.elapsed()
+            })
+            .collect();
+        took.sort();
+        eprintln!(
+            "watcher_look mods={count} median={:?} worst={:?}",
+            took[took.len() / 2],
+            took[took.len() - 1]
+        );
     }
 }

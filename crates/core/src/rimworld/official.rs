@@ -8,6 +8,8 @@ pub struct Official {
     pub name: String,
     pub author: String,
     pub picture: Option<String>,
+    #[serde(skip)]
+    pub package_id: String,
 }
 
 /// Sorted with the game first, then the expansions by folder name.
@@ -25,8 +27,9 @@ pub fn installed(game: &Path) -> Vec<Official> {
                 name: about.name.unwrap_or_else(|| folder.clone()),
                 author: about.authors.join(", "),
                 picture: about::preview(&path).map(|p| p.to_string_lossy().into_owned()),
+                package_id: id::fold(&about.package_id),
             };
-            Some((id::fold(&about.package_id) != CORE, folder, official))
+            Some((official.package_id != CORE, folder, official))
         })
         .collect();
     found.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
@@ -77,6 +80,7 @@ mod tests {
         let picture = game.join("Data/Royalty/About/Preview.png");
         assert_eq!(found[2].picture.as_deref(), picture.to_str());
         assert_eq!(found[0].picture, None);
+        assert_eq!(found[2].package_id, "ludeon.rimworld.royalty");
     }
 
     #[test]

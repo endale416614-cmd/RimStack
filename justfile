@@ -9,10 +9,14 @@ default:
 # Build the release app
 build:
     cargo build --release -q -p rimstack-app
-    tools/qml-import.sh
 
 # Build and open RimStack on the installed mods
 run *args: build
+    {{app}} {{args}}
+
+# Run with gpui-fast's developer tools: Ctrl+Alt+Shift+F frame times over the window, Ctrl+Alt+Shift+I the inspector
+dev *args:
+    cargo build --release -q -p rimstack-app --features profiler,inspector
     {{app}} {{args}}
 
 # Open on 2,300 made-up mods instead of the installed ones
@@ -23,26 +27,27 @@ demo *args: build
 fmt:
     cargo fmt
 
-# Clippy on every target, then qmllint on the QML
-lint: build
-    cargo clippy -q --all-targets
-    tools/lint-qml.sh
-    @# 21 are known (items reached through a Loader, a Repeater or `parent`, and the app's own types, which qmllint cannot see into): a new one is a mistake.
-    @test "$(tools/lint-qml.sh 2>&1 | grep -c '^Warning')" -le 21 || { echo "qmllint: more warnings than the 21 known"; exit 1; }
+# Clippy on every target
+lint:
+    cargo clippy --release -q --all-targets
 
-# Both crates' tests; `just test list::` runs those matching a name
+# Both crates' tests, on the release build's profile; `just test list::` runs those matching a name
 test *filter:
-    cargo test --workspace -q {{filter}}
+    cargo test --release --workspace -q {{filter}}
 
 # The package for this system, into target/packages: an AppImage, a zip and installer, or a dmg
 package:
     {{ if os() == "windows" { "pwsh packaging/windows/package.ps1" } else { "packaging/" + os() + "/package.sh" } }}
 
+# The Flatpak, into target/packages
+flatpak:
+    packaging/flatpak/package.sh
+
 # Known advisories against the crates in Cargo.lock
 audit:
     cargo audit
 
-# After a text was added or changed: wrap it and write words.json and English.json again
+# After a text was added or changed: write words.json and English.json again
 words:
     python3 tools/words.py
 
@@ -61,23 +66,44 @@ languages:
         for text in extra: print("  no longer used:", text)
     raise SystemExit(1 if bad else 0)
 
-# Every action of the Mods screen, with no window, on a copy of the game's settings; `just check Français` in that language
-check language="": build
-    RIMSTACK_LANGUAGE="{{language}}" tools/check-app.sh
-
-# A picture of one section, with no window and its own settings folder: `just shot 4 /tmp/logs.png --view=1`
-shot section out *args: build
+# The window's picture at 2x, with no window and its own settings folder: `just shot /tmp/mods.png --demo --theme=light --text-scale=1.6`
+shot out *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    scratch="$(mktemp -d)"
+    cargo build --release -q -p rimstack-app --example shot
+    scratch="$(realpath "$(mktemp -d -p target)")"
     trap 'rm -rf "$scratch"' EXIT
-    mkdir -p "$scratch/settings/RimStack"
-    printf '{ "setupDone": "yes" }' > "$scratch/settings/RimStack/settings.json"
-    XDG_CONFIG_HOME="$scratch/settings" QT_QPA_PLATFORM=offscreen {{app}} --section={{section}} --shot={{out}} {{args}}
+    XDG_CONFIG_HOME="$scratch/settings" XDG_DATA_HOME="$scratch/data" target/release/examples/shot {{out}} {{args}}
 
-# The scripted ten-second scroll on made-up mods, in a real window: frames, slow frames, the worst
+# The same on a made-up install, with its own HOME: `just shot-fx /tmp/dl.png rim 1 --section=1`;
+# `DOWNLOADS=1` adds what the Downloads screen shows (tools/fixture-downloads.sh)
+shot-fx out theme="rim" scale="1" *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --release -q -p rimstack-app --example shot
+    scratch="$(realpath "$(mktemp -d -p target)")"
+    trap 'rm -rf "$scratch"' EXIT
+    tools/fixture-game.sh "$scratch/fx" >/dev/null
+    mkdir -p "$scratch/s/RimStack" "$scratch/d"
+    printf '{ "setupDone": "yes" }' > "$scratch/s/RimStack/settings.json"
+    printf '[Appearance]\ntheme=%s\ntextScale=%s\nhintsSeen=true\n' {{theme}} {{scale}} > "$scratch/s/RimStack/RimStack.conf"
+    workshop="$scratch/fx/workshop"
+    if [ -n "${DOWNLOADS:-}" ]; then
+        tools/fixture-downloads.sh "$scratch/fx" "$scratch/d/RimStack"
+        workshop="$scratch/fx/steam/workshop/content/294100"
+    fi
+    cp -r "$scratch/fx/config" "$scratch/cfg"
+    export HOME="$scratch" RIMSTACK_GAME="$scratch/fx/game" RIMSTACK_WORKSHOP="$workshop" RIMSTACK_CONFIG="$scratch/cfg" \
+        XDG_DATA_HOME="$scratch/d" XDG_CONFIG_HOME="$scratch/s" RIMSTACK_FIXTURE=1
+    timeout 60 target/release/examples/shot {{out}} --theme={{theme}} --text-scale={{scale}} {{args}}
+
+# The scripted ten-second scroll on made-up mods, in a real window: frames, slow frames, the worst, the CPU it took
 scroll: build
     {{app}} --selftest 2>&1 | grep -E "scroll frames|_ms="
+
+# What drawing the scrolling load order costs per frame, with no screen to wait on
+scroll-cost:
+    cargo test --release -q -p rimstack-app scroll_cost -- --ignored --nocapture 2>&1 | grep scroll_cost
 
 # A release: the version in Cargo.toml and Cargo.lock, `just ready`, the commit and its tag; pushing them stays by hand
 release version:
@@ -97,6 +123,5 @@ release version:
     echo
     echo "Tagged v$v. To publish: git push origin main v$v"
 
-# Everything before a commit: format, lint, tests, build, the app's checks (in English; the screens check switches language)
-ready: fmt lint test audit words languages
-    just check
+# Everything before a commit: format, lint, tests, the language files, advisories
+ready: fmt lint test languages audit

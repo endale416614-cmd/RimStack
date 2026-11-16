@@ -3,11 +3,15 @@ use crate::changes::Changes;
 use rimstack_core::base::error::Error;
 use rimstack_core::base::sentence::Sentence;
 use rimstack_core::kept::{journal, lists};
+use rimstack_core::mods::library::ModId;
 use rimstack_core::mods::share;
 use rimstack_core::rimworld::modsconfig;
 use rimstack_core::say;
+use rimstack_core::sources::rentry;
 use serde::Serialize;
 use std::path::Path;
+
+const CORE: &str = "ludeon.rimworld";
 
 const SNAPSHOTS_SHOWN: usize = 5;
 
@@ -108,7 +112,7 @@ pub struct Snapshot {
     pub title: Sentence,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryLine {
     pub time: u64,
@@ -140,6 +144,26 @@ impl ListFile {
 }
 
 impl App {
+    /// `active` as text, one a line, as `Copy the load order` gives them.
+    pub fn listing(&self, active: &[ModId]) -> String {
+        use rimstack_core::mods::share::{Entry, listing};
+        let loaded = self.library();
+        let Ok((library, _)) = &*loaded else {
+            return String::new();
+        };
+        let entries: Vec<Entry> = active
+            .iter()
+            .filter_map(|&id| library.get(id))
+            .map(Entry::of)
+            .collect();
+        let paths = self.paths();
+        let version = paths
+            .full_game_version
+            .as_deref()
+            .unwrap_or(&library.game_version);
+        listing(version, &entries)
+    }
+
     pub fn saved_lists(&self) -> Vec<lists::Saved> {
         lists::all(&self.lists_dir())
     }
@@ -210,6 +234,34 @@ impl App {
         lists::load(&self.snapshots_dir(), name).ok()
     }
 
+    pub fn fresh_list(&self, with_expansions: bool) -> Vec<String> {
+        let mut ids = vec![CORE.to_string()];
+        if with_expansions {
+            let found = self.install().official();
+            ids.extend(
+                found
+                    .iter()
+                    .map(|o| o.package_id.clone())
+                    .filter(|id| id != CORE),
+            );
+        }
+        ids
+    }
+
+    /// Blocks on the network for a link.
+    pub fn ids_in_copied(&self, text: &str) -> Result<Vec<String>, Error> {
+        let text = match rentry::link_id(text) {
+            Some(page) => rentry::fetch(&page)?,
+            None => text.to_string(),
+        };
+        Ok(share::ids_in(&text))
+    }
+
+    /// Blocks on the network.
+    pub fn publish_list(&self, listing: &str) -> Result<rentry::Published, Error> {
+        rentry::publish(listing)
+    }
+
     pub fn original_list(&self) -> Option<Vec<String>> {
         let config = self.paths().mods_config()?;
         let original = config.with_file_name("ModsConfig.xml.rimstack-original");
@@ -242,6 +294,23 @@ mod tests {
     }
 
     #[test]
+    fn a_fresh_list_is_the_game_alone_or_with_its_expansions() {
+        let (tmp, app) = installed();
+        let about = tmp.path().join("game/Data/Royalty/About");
+        std::fs::create_dir_all(&about).unwrap();
+        std::fs::write(
+            about.join("About.xml"),
+            "<ModMetaData><packageId>Ludeon.RimWorld.Royalty</packageId></ModMetaData>",
+        )
+        .unwrap();
+        assert_eq!(app.fresh_list(false), ["ludeon.rimworld"]);
+        assert_eq!(
+            app.fresh_list(true),
+            ["ludeon.rimworld", "ludeon.rimworld.royalty"]
+        );
+    }
+
+    #[test]
     fn a_list_is_kept_found_and_deleted_and_the_history_says_what_takes_it_back() {
         let (_tmp, app) = installed();
         app.keep_list("Mine", Some(vec!["a.b".into()])).unwrap();
@@ -252,11 +321,13 @@ mod tests {
         assert!(app.list_named("Mine").is_none());
 
         let snapshot = app.snapshot("@saving", &["a.b".to_string()]).unwrap();
+        app.settle_writes();
         app.note_change(
             rimstack_core::say!("Saved the load order: {}", "x"),
             Some(&snapshot),
         );
         app.note(Sentence::from_kept("[\"Set aside\"]"), String::new());
+        app.settle_writes();
         let history = app.history();
         assert_eq!(history[0].said.to_string(), "Set aside");
         assert_eq!(history[1].said.to_string(), "Saved the load order: x");

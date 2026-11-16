@@ -1,9 +1,15 @@
+pub mod activated;
+pub mod copies;
 pub mod desktop;
+pub mod download_list;
 pub mod journal;
 pub mod launches;
 pub mod lists;
+pub mod mod_facts;
 pub mod new_mods;
 pub mod notes;
 pub mod owntheme;
+pub mod prefs;
+pub mod searches;
 pub mod settings;
 pub mod updates;

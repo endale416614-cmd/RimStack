@@ -1,6 +1,10 @@
 use super::{Installed, Library, ModId};
-use crate::base::versions::{newer, numbers};
+use crate::base::error::Error;
+use crate::base::versions::{latest, newer};
 use crate::rimworld::paths::Source;
+use crate::said;
+use std::collections::HashMap;
+use std::path::Path;
 
 /// A mod in the game's Mods folder that is also a Workshop subscription: the game loads the
 /// local one, often a copy left from SteamCMD or "Copy to the game folder".
@@ -35,6 +39,34 @@ impl Library {
     }
 }
 
+impl Library {
+    /// Each of `ids` that may be copied into the game's Mods folder, or why not: a Workshop mod
+    /// may, unless a mod of its package id is there already.
+    pub fn to_copy(&self, ids: &[ModId]) -> Vec<(ModId, Result<&Installed, Error>)> {
+        let local: HashMap<String, &Path> = self
+            .ids()
+            .filter(|(_, m)| m.source == Source::Local)
+            .filter_map(|(_, m)| Some((m.key()?, m.path.as_path())))
+            .collect();
+        let judged = |id: ModId| match self.get(id) {
+            None => Err(Error::refused(said!(
+                "That mod has moved since it was read; read the folders again"
+            ))),
+            Some(m) if m.source != Source::Workshop => {
+                Err(Error::refused(said!("Not a Workshop mod")))
+            }
+            Some(m) => match m.key().and_then(|key| local.get(&key)) {
+                Some(there) => Err(Error::refused(said!(
+                    "{} is there already",
+                    there.display()
+                ))),
+                None => Ok(m),
+            },
+        };
+        ids.iter().map(|&id| (id, judged(id))).collect()
+    }
+}
+
 /// By `modVersion` when both give one and they differ, which few do; else by the latest game
 /// version each supports, since an author may add a game's folder without raising it.
 fn workshop_newer(local: &Installed, workshop: &Installed) -> bool {
@@ -46,12 +78,11 @@ fn workshop_newer(local: &Installed, workshop: &Installed) -> bool {
     {
         return newer(was, is);
     }
-    let latest = |versions: &[String]| versions.iter().max_by_key(|v| numbers(v)).cloned();
     match (
         latest(&local.supported_versions),
         latest(&workshop.supported_versions),
     ) {
-        (Some(was), Some(is)) => newer(&was, &is),
+        (Some(was), Some(is)) => newer(was, is),
         _ => false,
     }
 }
@@ -116,6 +147,20 @@ mod tests {
         assert_eq!(library.copies(local), Some(copies));
         assert_eq!(library.copies(workshop), Some(copies));
         assert_eq!(library.copies(by(&library, Source::Workshop, "77")), None);
+    }
+
+    #[test]
+    fn only_a_workshop_mod_without_a_local_copy_may_be_copied() {
+        let (_tmp, library) = library("", "");
+        let (local, workshop, other) = (
+            by(&library, Source::Local, "3535"),
+            by(&library, Source::Workshop, "3535"),
+            by(&library, Source::Workshop, "77"),
+        );
+        let judged = library.to_copy(&[local, workshop, other, ModId::new(0, 99)]);
+        let ok: Vec<bool> = judged.iter().map(|(_, m)| m.is_ok()).collect();
+        assert_eq!(ok, [false, false, true, false]);
+        assert_eq!(judged[2].1.as_ref().unwrap().folder, "77");
     }
 
     #[test]

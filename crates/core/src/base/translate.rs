@@ -14,7 +14,6 @@ pub struct Counting {
 }
 
 impl Counting {
-    /// English's rules for an empty or unreadable locale.
     pub fn of(locale: &str) -> Self {
         let parsed = icu_locale_core::Locale::try_from_str(locale.trim());
         let rules = parsed

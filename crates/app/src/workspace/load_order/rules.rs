@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 
 type Kept = (Vec<Option<ModId>>, Vec<ModId>, Vec<infer::Inferred>);
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, PartialEq)]
 pub struct Detected {
     kept: Option<Kept>,
 }
@@ -49,7 +49,7 @@ impl Detected {
                 let loaded = loadfolders::folders(&found.path, &library.game_version, &|k| {
                     active.contains(k)
                 });
-                read_now.push((at, infer::scan(&loaded)));
+                read_now.push((at, infer::scan(&loaded, &library.game_assemblies)));
             }
         }
         let nothing = infer::Scanned::default();

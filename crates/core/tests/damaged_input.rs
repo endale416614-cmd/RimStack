@@ -1,10 +1,10 @@
-use rimstack_core::mods::list::{Category, GroupedList, Mod};
+use rimstack_core::mods::list::{Category, GroupedList, Mod, offers};
 use rimstack_core::mods::rules::{Kind, Rule};
 use rimstack_core::{
-    base::markup, base::vdf, kept::notes, kept::owntheme, mods::community, mods::ddsaudit,
-    mods::share, mods::sort, rimworld::about, rimworld::dotnet, rimworld::loadfolders,
-    rimworld::logs, rimworld::modsconfig, rimworld::rimsaves, rimworld::steamworks,
-    rimworld::workshop, sources::changes,
+    base::markup, base::vdf, base::zipnames, kept::notes, kept::owntheme, mods::community,
+    mods::ddsaudit, mods::share, mods::sort, rimworld::about, rimworld::dotnet,
+    rimworld::engine::Engine, rimworld::loadfolders, rimworld::logs, rimworld::modsconfig,
+    rimworld::rimsaves, rimworld::steamworks, rimworld::workshop, sources::changes,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::{Duration, Instant};
@@ -102,6 +102,10 @@ const PIECES: &[&str] = &[
     "<v1.6>",
     "IfModActive",
     "tag:",
+    "!tag:",
+    "version:",
+    "!version:1.",
+    "!",
     "is:",
     "author:",
     "patches:",
@@ -139,16 +143,22 @@ fn a_mod(name: &str, category: Category) -> Mod {
         name: name.to_string(),
         author: "someone".to_string(),
         version: "1.0".to_string(),
+        latest_game: "1.0".to_string(),
         category,
         installed: None,
         tags: Vec::new(),
         local: false,
         workshop: false,
         git: false,
+        leftover: false,
         code: false,
         patched: std::sync::Arc::from(Vec::<String>::new()),
         sub: String::new(),
         load_micros: None,
+        updated: None,
+        size: None,
+        downloaded: None,
+        activated: None,
         filed: category,
         chosen: false,
         held_by: String::new(),
@@ -161,7 +171,7 @@ fn no_text_parser_panics_on_thirty_thousand_made_up_texts() {
         let _ = modsconfig::parse(made);
         let _ = modsconfig::with_active(made, &["a.b".to_string()]);
         let _ = modsconfig::short_version(made);
-        let _ = markup::rich(made);
+        let _ = markup::blocks(made);
         let _ = vdf::libraries(made);
         let _ = about::parse(made.as_bytes());
         let _ = logs::errors(made);
@@ -187,7 +197,10 @@ fn no_text_parser_panics_on_thirty_thousand_made_up_texts() {
         let _ = steamworks::parse(made);
         let _ = owntheme::contrast(made, "#000000");
         let _ = owntheme::contrast(&format!("#{made}"), "#000000");
-        let _ = ddsaudit::problem(made.as_bytes(), made.len() as u64);
+        for engine in [Engine::Unity, Engine::Waylith] {
+            let _ = ddsaudit::problem(made.as_bytes(), made.len() as u64, engine);
+        }
+        let _ = zipnames::names(&mut std::io::Cursor::new(made.as_bytes()));
     });
     assert!(failed.is_empty(), "panicked on {:?}", failed.first());
 }
@@ -203,6 +216,11 @@ fn the_filter_box_takes_any_text() {
         list.set_filter(made);
         let _ = list.matching();
         let _ = list.rows().len();
+        let typed = made.rsplit(' ').next().unwrap_or_default();
+        let mut written = a_mod("Written", Category::Content);
+        written.tags = made.split(',').map(String::from).collect();
+        written.latest_game = made.to_string();
+        let _ = offers::offers(typed, made, &offers::Counted::default(), [&written]);
     });
     assert!(failed.is_empty(), "panicked on {:?}", failed.first());
 }

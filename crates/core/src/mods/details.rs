@@ -169,8 +169,7 @@ pub fn clashes(
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Slow {
-    /// -1 for a mod that is not installed.
-    pub mod_id: i64,
+    pub mod_id: Option<ModId>,
     pub name: String,
     pub took: String,
     /// Its part of the slowest mod's time, 0 to 1.
@@ -186,7 +185,7 @@ pub fn slowest(mods: &[Mod], most: usize) -> Vec<Slow> {
     timed.sort_by_key(|(_, micros)| std::cmp::Reverse(*micros));
     let longest = timed.first().map_or(1, |(_, micros)| *micros);
     let one = |&(m, micros): &(&Mod, u32)| Slow {
-        mod_id: m.installed.map_or(-1, |id| i64::from(id.to_qml())),
+        mod_id: m.installed,
         name: m.name.clone(),
         took: crate::rimworld::startup::seconds(f64::from(micros) / 1000.0),
         part: f64::from(micros) / f64::from(longest),
@@ -205,16 +204,22 @@ mod tests {
             name: name.to_string(),
             author: String::new(),
             version: String::new(),
+            latest_game: String::new(),
             category: Category::Content,
             installed: Some(ModId::new(0, at + 10)),
             tags: Vec::new(),
             local: false,
             workshop: false,
             git: false,
+            leftover: false,
             code: false,
             patched: Default::default(),
             sub: String::new(),
             load_micros: None,
+            updated: None,
+            size: None,
+            downloaded: None,
+            activated: None,
             filed: Category::Content,
             chosen: false,
             held_by: String::new(),

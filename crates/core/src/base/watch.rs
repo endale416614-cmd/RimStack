@@ -35,7 +35,6 @@ pub struct Noticed {
     pub language: bool,
 }
 
-/// The first look reports nothing.
 #[derive(Debug, Default)]
 pub struct Watcher {
     before: Option<Stamps>,

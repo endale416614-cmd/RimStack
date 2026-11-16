@@ -304,14 +304,10 @@ Second line.</description>
     }
 
     #[test]
-    fn byte_order_mark_and_missing_declaration_are_fine() {
+    fn byte_order_mark_missing_declaration_and_tag_case_are_fine() {
         let mut bytes = vec![0xEF, 0xBB, 0xBF];
         bytes.extend_from_slice(b"<ModMetaData><packageId>a.b</packageId></ModMetaData>");
         assert_eq!(parse(&bytes).unwrap().package_id, "a.b");
-    }
-
-    #[test]
-    fn tag_case_does_not_matter() {
         let a = parse(b"<ModMetaData><PackageID>a.b</PackageID><Name>N</Name></ModMetaData>");
         assert_eq!(a.unwrap().name.as_deref(), Some("N"));
     }

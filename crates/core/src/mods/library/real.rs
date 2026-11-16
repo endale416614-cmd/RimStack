@@ -51,11 +51,17 @@ fn real_install_inferred_rules_mostly_agree_with_a_working_order() {
     let original = config.with_file_name("ModsConfig.xml.rimstack-original");
     let baseline = if original.exists() { original } else { config };
     let ids = crate::rimworld::modsconfig::read(&baseline).unwrap().active;
-    let library = build(
+    let mut library = build(
         scan(&paths.roots()),
         &ids,
         paths.game_version.as_deref().unwrap(),
     );
+    library.game_assemblies = paths
+        .game
+        .as_deref()
+        .and_then(Game::find)
+        .map(|game| game.ships().clone())
+        .unwrap_or_default();
     let active: Vec<&Installed> = library
         .active
         .iter()
@@ -67,11 +73,12 @@ fn real_install_inferred_rules_mostly_agree_with_a_working_order() {
     let scanned: Vec<crate::mods::infer::Scanned> = active
         .par_iter()
         .map(|m| {
-            crate::mods::infer::scan(&crate::rimworld::loadfolders::folders(
-                &m.path,
-                &library.game_version,
-                &|k| keys.contains(k),
-            ))
+            crate::mods::infer::scan(
+                &crate::rimworld::loadfolders::folders(&m.path, &library.game_version, &|k| {
+                    keys.contains(k)
+                }),
+                &library.game_assemblies,
+            )
         })
         .collect();
     let names: Vec<String> = active

@@ -12,7 +12,6 @@ use std::time::UNIX_EPOCH;
 pub struct Header {
     /// As the game writes it: `1.6.4871 rev600`.
     pub game_version: Option<String>,
-    /// As written.
     pub mod_ids: Vec<String>,
     /// One per id; old saves may have fewer.
     pub mod_names: Vec<String>,
@@ -250,7 +249,6 @@ impl Compared {
 #[serde(rename_all = "camelCase")]
 pub struct Row {
     pub file: String,
-    /// From the RimSaves file name.
     pub folder: String,
     pub name: String,
     pub facts: Vec<(&'static str, String)>,
@@ -530,13 +528,9 @@ mod tests {
     }
 
     #[test]
-    fn the_same_mods_in_the_same_order_are_no_difference() {
+    fn missing_added_and_reordered_are_told_apart_and_the_same_mods_are_no_difference() {
         let d = compare(&ids(&["A.a", "b.b_steam"]), &ids(&["a.a", "b.b"]));
         assert!(d.is_none());
-    }
-
-    #[test]
-    fn missing_added_and_reordered_are_told_apart() {
         let d = compare(&ids(&["a", "gone", "b"]), &ids(&["b", "new", "a"]));
         assert_eq!(d.missing, [1]);
         assert_eq!(d.added, [1]);

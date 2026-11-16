@@ -5,11 +5,16 @@ use crate::said;
 use std::path::{Path, PathBuf};
 
 use crate::rimworld::paths::APP_ID as GAME;
+use crate::rimworld::workshop::{Version, installed_versions, is_id};
 
 /// None on macOS, where it is not run.
 pub fn steamcmd(data_dir: &Path) -> Option<PathBuf> {
     on_this_system().ok()?;
     steamcmd_among(data_dir, std::env::var_os("PATH"))
+}
+
+pub fn refusal() -> Option<Sentence> {
+    on_this_system().err().map(|e| e.sentence().clone())
 }
 
 fn on_this_system() -> Result<()> {
@@ -118,12 +123,8 @@ fn only_inside(listing: &str, program: &str) -> Result<()> {
     }
 }
 
-fn not_an_id(id: &str) -> Error {
+pub(super) fn not_an_id(id: &str) -> Error {
     Error::refused(said!("{} is not a Workshop id", id))
-}
-
-fn is_workshop_id(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_ascii_digit())
 }
 
 /// The folders are deleted when this is dropped: keep what is needed by moving it out first.
@@ -138,6 +139,15 @@ impl Fetched {
             Some((_, outcome)) => outcome.as_deref().map_err(Clone::clone),
             None => Err(Error::refused(said!("nothing was asked"))),
         }
+    }
+
+    /// What SteamCMD recorded of each item it downloaded in this run.
+    pub fn versions(&self) -> std::collections::HashMap<String, Version> {
+        let record = self.attempt.as_ref().and_then(|attempt| {
+            let acf = attempt.join(format!("steamapps/workshop/appworkshop_{GAME}.acf"));
+            std::fs::read_to_string(acf).ok()
+        });
+        record.map_or_else(Default::default, |acf| installed_versions(&acf))
     }
 }
 
@@ -204,8 +214,7 @@ pub fn fetch_all(steamcmd: &Path, ids: &[String], scratch: &Path) -> Fetched {
     if let Err(problem) = on_this_system() {
         return every(problem);
     }
-    let (asked, refused): (Vec<&String>, Vec<&String>) =
-        ids.iter().partition(|id| is_workshop_id(id));
+    let (asked, refused): (Vec<&String>, Vec<&String>) = ids.iter().partition(|id| is_id(id));
     let not_an_id = |id: &&String| ((*id).clone(), Err(not_an_id(id)));
     let mut items: Vec<_> = refused.iter().map(not_an_id).collect();
     if asked.is_empty() {
@@ -260,19 +269,27 @@ pub fn fetch_all(steamcmd: &Path, ids: &[String], scratch: &Path) -> Fetched {
     }
 }
 
-/// Replaces an earlier download of the id. Writes `PublishedFileId.txt`, where the game and
-/// other tools look for it.
 pub fn put_in_local(fresh: &Path, workshop_id: &str, local_mods: &Path) -> Result<PathBuf> {
-    if !is_workshop_id(workshop_id) {
+    if !is_id(workshop_id) {
         return Err(not_an_id(workshop_id));
     }
-    let noted = fresh.join("About").join("PublishedFileId.txt");
-    if !noted.exists() {
-        std::fs::write(&noted, workshop_id).map_err(|e| Error::file(&noted, e))?;
-    }
+    note_workshop_id(fresh, workshop_id)?;
     let to = local_mods.join(workshop_id);
     replace(&to, fresh)?;
     Ok(to)
+}
+
+/// `About/PublishedFileId.txt`, where the game and other tools look for a local mod's Workshop
+/// id; one the author shipped is kept.
+pub(super) fn note_workshop_id(mod_root: &Path, workshop_id: &str) -> Result<()> {
+    let about = mod_root.join("About");
+    let noted = about.join("PublishedFileId.txt");
+    if noted.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(&about)
+        .and_then(|()| std::fs::write(&noted, workshop_id))
+        .map_err(|e| Error::file(&noted, e))
 }
 
 /// `installed` need not be there. The new copy is made beside it and swapped in by renames, so
@@ -619,11 +636,20 @@ mod tests {
         let fake = fake_steamcmd(
             tmp.path(),
             "mkdir -p \"$content/123/About\"\n\
+             printf '\"WorkshopItemsInstalled\" { \"123\" { \"timeupdated\" \"44\" \"manifest\" \"55\" } }' \
+             > \"$dir/steamapps/workshop/appworkshop_294100.acf\"\n\
              printf '\\x1b[0mSuccess. Downloaded item 123 to \"%s/123\" (8296511 bytes) Downloading item 4 ...\\n' \"$content\"",
         );
         let all = fetch_all(&fake, &["123".to_string()], &scratch);
         let fresh = all.items[0].1.as_ref().unwrap().clone();
         assert!(fresh.join("About").is_dir());
+        assert_eq!(
+            all.versions()["123"],
+            Version {
+                manifest: 55,
+                updated: 44
+            }
+        );
         assert!(!fresh.starts_with(scratch.join("steamapps")));
         assert!(fresh.starts_with(&scratch));
         assert!(!stale.exists());

@@ -1,5 +1,6 @@
 use super::App;
 use crate::changes::Changes;
+use rimstack_core::base::locks::Held;
 use rimstack_core::base::sentence::Sentence;
 use rimstack_core::kept::{journal, lists};
 use std::path::PathBuf;
@@ -19,7 +20,8 @@ impl App {
         self.data_dir().join("journal.json")
     }
 
-    /// Named by `@kind`, local time to the second, then a counter. `None` if not kept.
+    /// Named by `@kind`, local time to the second, then a counter; written off this thread, in
+    /// the order asked, and told as `LISTS` once written. `None` when no name is free.
     pub fn snapshot(&self, kind: &str, list: &[String]) -> Option<String> {
         let dir = self.snapshots_dir();
         let at = format!(
@@ -27,20 +29,25 @@ impl App {
             chrono::Local::now().format("%Y-%m-%d %H.%M.%S")
         );
         let numbered = (2..).map(|n| format!("{at} {n}"));
-        let name = std::iter::once(at.clone())
-            .chain(numbered)
-            .find(|name| !lists::taken(&dir, name))?;
-        match lists::save(&dir, &name, list) {
-            Ok(()) => {
-                lists::prune(&dir, SNAPSHOTS_KEPT);
-                self.publish(Changes::LISTS);
-                Some(name)
-            }
-            Err(problem) => {
+        let name = {
+            let mut named = self.snapshots_named.held();
+            let name = std::iter::once(at.clone())
+                .chain(numbered)
+                .find(|name| !named.contains(name) && !lists::taken(&dir, name))?;
+            named.insert(name.clone());
+            name
+        };
+        let (name_kept, list) = (name.clone(), list.to_vec());
+        let (named, bus) = (self.snapshots_named.clone(), self.bus.clone());
+        self.in_order(move || {
+            if let Err(problem) = lists::save(&dir, &name_kept, &list) {
                 rimstack_core::problem!("{problem}");
-                None
             }
-        }
+            named.held().remove(&name_kept);
+            lists::prune(&dir, SNAPSHOTS_KEPT);
+            bus.publish(Changes::LISTS);
+        });
+        Some(name)
     }
 
     pub fn note_change(&self, what: Sentence, snapshot: Option<&str>) {
@@ -55,10 +62,25 @@ impl App {
             what: what.to_kept().to_string(),
             revert,
         };
-        match journal::add(&self.journal_file(), entry) {
-            Ok(()) => self.publish(Changes::LISTS),
+        let (file, bus) = (self.journal_file(), self.bus.clone());
+        self.in_order(move || match journal::add(&file, entry) {
+            Ok(()) => bus.publish(Changes::LISTS),
             Err(problem) => rimstack_core::problem!("{problem}"),
-        }
+        });
+    }
+
+    /// `write` off this thread, after every write asked before it.
+    fn in_order(&self, write: impl FnOnce() + Send + 'static) {
+        self.records_waiting.held().push_back(Box::new(write));
+        let waiting = self.records_waiting.clone();
+        self.records_writes.ask("history written", (), move |()| {
+            loop {
+                let Some(write) = waiting.held().pop_front() else {
+                    return;
+                };
+                write();
+            }
+        });
     }
 }
 
@@ -71,12 +93,14 @@ mod tests {
     fn a_snapshot_is_kept_by_its_kind_and_named_in_the_history() {
         let (_tmp, app) = installed();
         let name = app.snapshot("@saving", &["a.b".to_string()]).unwrap();
+        app.settle_writes();
         assert!(name.starts_with("@saving 2"), "{name}");
         assert_eq!(lists::load(&app.snapshots_dir(), &name).unwrap(), ["a.b"]);
         app.note_change(
             rimstack_core::say!("Saved the load order: {}", "x"),
             Some(&name),
         );
+        app.settle_writes();
         let kept = journal::read(&app.journal_file());
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].revert, format!("list {name}"));
@@ -87,6 +111,7 @@ mod tests {
         let (_tmp, app) = installed();
         let first = app.snapshot("@saving", &["a".to_string()]).unwrap();
         let second = app.snapshot("@saving", &["b".to_string()]).unwrap();
+        app.settle_writes();
         let dir = app.snapshots_dir();
         assert_ne!(first, second);
         assert_eq!(lists::load(&dir, &first).unwrap(), ["a"]);

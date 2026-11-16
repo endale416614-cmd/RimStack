@@ -137,6 +137,43 @@ fn unreadable_mods_keep_their_reason() {
 }
 
 #[test]
+fn only_a_workshop_folder_without_about_xml_is_a_leftover() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (local, workshop) = (tmp.path().join("Mods"), tmp.path().join("workshop"));
+    fs::create_dir_all(workshop.join("900/Textures/Things")).unwrap();
+    fs::write(workshop.join("900/Textures/Things/a.dds"), "").unwrap();
+    add_mod(&workshop, "901", "<ModMetaData><name>", &[]);
+    add_mod(
+        &workshop,
+        "902",
+        &about("Test.Kept", "Kept", &[]),
+        &["Defs"],
+    );
+    fs::create_dir_all(local.join("unfinished/Defs")).unwrap();
+    let roots = [
+        ModRoot {
+            path: local,
+            source: Source::Local,
+        },
+        ModRoot {
+            path: workshop,
+            source: Source::Workshop,
+        },
+    ];
+    let library = build(scan(&roots), &[], "1.6");
+    let leftovers: Vec<&str> = library
+        .inactive
+        .iter()
+        .filter(|m| m.leftover)
+        .map(|m| m.name.as_str())
+        .collect();
+    assert_eq!(leftovers, ["900"]);
+    let mut subscribed: Vec<&str> = library.workshop_mods().into_keys().collect();
+    subscribed.sort();
+    assert_eq!(subscribed, ["901", "902"]);
+}
+
+#[test]
 fn content_folders_are_found_one_level_down() {
     let (_tmp, roots) = sample();
     let mods = scan(&roots);
@@ -197,6 +234,8 @@ fn active_ids_resolve_in_order_whatever_their_case() {
         code: Code::default(),
         preview: None,
         git: false,
+        leftover: false,
+        created: None,
     };
     assert_eq!(unnamed(Source::Official).display_name(), "Royalty");
     assert_eq!(

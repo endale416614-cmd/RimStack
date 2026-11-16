@@ -11,6 +11,7 @@ use std::fmt::Display;
 pub enum Sentence {
     /// Shown as it came, never looked up in a language.
     Plain(String),
+    Number(i64),
     Said {
         english: Cow<'static, str>,
         parts: Vec<Sentence>,
@@ -31,6 +32,7 @@ pub trait Language {
     /// Its English where the language has no text.
     fn word<'a>(&'a self, english: &'a str) -> &'a str;
     fn counting(&self) -> &Counting;
+    fn number(&self, n: i64) -> String;
 }
 
 pub struct English;
@@ -45,21 +47,47 @@ impl Language for English {
             std::sync::LazyLock::new(|| Counting::of("en"));
         &ENGLISH
     }
+
+    fn number(&self, n: i64) -> String {
+        n.to_string()
+    }
 }
 
 pub struct Part(pub Sentence);
 
-impl<T: Display> From<&T> for Part {
-    fn from(part: &T) -> Self {
-        Part(Sentence::Plain(part.to_string()))
+pub struct Inside<'a>(&'a Sentence);
+
+pub struct Pick<'a, T>(pub &'a T);
+
+pub trait Exact {
+    fn part(&self) -> Part;
+}
+
+pub trait Shown {
+    fn part(&self) -> Part;
+}
+
+macro_rules! numbers {
+    ($($int:ty),*) => {$(
+        impl Exact for Pick<'_, $int> {
+            fn part(&self) -> Part {
+                Part(Sentence::Number(i64::try_from(*self.0).unwrap_or(i64::MAX)))
+            }
+        }
+    )*};
+}
+
+numbers!(usize, u8, u16, u32, u64, isize, i8, i16, i32, i64);
+
+impl<T: Display> Shown for &Pick<'_, T> {
+    fn part(&self) -> Part {
+        Part(Sentence::Plain(self.0.to_string()))
     }
 }
 
-pub struct Inside<'a>(&'a Sentence);
-
-impl From<&Inside<'_>> for Part {
-    fn from(inside: &Inside<'_>) -> Self {
-        Part(inside.0.clone())
+impl Exact for Pick<'_, Inside<'_>> {
+    fn part(&self) -> Part {
+        Part(self.0.0.clone())
     }
 }
 
@@ -114,6 +142,7 @@ impl Sentence {
             |parts: &[Sentence]| -> Vec<String> { parts.iter().map(|p| p.put(language)).collect() };
         match self {
             Sentence::Plain(text) => text.clone(),
+            Sentence::Number(n) => language.number(*n),
             Sentence::Said { english, parts } => fill(language.word(english), &all(parts)),
             Sentence::Counted {
                 n,
@@ -123,7 +152,7 @@ impl Sentence {
             } => {
                 let (one, many) = (language.word(one), language.word(many));
                 let form = language.counting().pick(*n, one, many);
-                let mut with_count = vec![n.to_string()];
+                let mut with_count = vec![language.number(i64::try_from(*n).unwrap_or(i64::MAX))];
                 with_count.extend(all(parts));
                 fill(form, &with_count)
             }
@@ -142,6 +171,7 @@ impl Sentence {
         let all = |parts: &[Sentence]| parts.iter().map(Sentence::to_kept).collect::<Vec<_>>();
         match self {
             Sentence::Plain(text) => Value::from(text.as_str()),
+            Sentence::Number(n) => Value::from(*n),
             Sentence::Said { english, parts } => std::iter::once(Value::from(english.as_ref()))
                 .chain(all(parts))
                 .collect(),
@@ -182,6 +212,9 @@ impl Sentence {
 
     pub fn from_kept_value(value: &Value) -> Self {
         let Value::Array(all) = value else {
+            if let Some(n) = value.as_i64() {
+                return Sentence::Number(n);
+            }
             return Sentence::Plain(match value {
                 Value::String(text) => text.clone(),
                 other => other.to_string(),
@@ -272,7 +305,11 @@ macro_rules! say {
     ($text:literal $(, $part:expr)* $(,)?) => {
         $crate::base::sentence::Sentence::said(
             $text,
-            vec![$($crate::base::sentence::Part::from(&$part)),*],
+            vec![$({
+                #[allow(unused_imports)]
+                use $crate::base::sentence::{Exact, Shown};
+                (&$crate::base::sentence::Pick(&$part)).part()
+            }),*],
         )
     };
 }
@@ -289,7 +326,11 @@ macro_rules! say_n {
             $n,
             $one,
             $many,
-            vec![$($crate::base::sentence::Part::from(&$part)),*],
+            vec![$({
+                #[allow(unused_imports)]
+                use $crate::base::sentence::{Exact, Shown};
+                (&$crate::base::sentence::Pick(&$part)).part()
+            }),*],
         )
     };
 }
@@ -308,6 +349,10 @@ mod tests {
 
         fn counting(&self) -> &Counting {
             &self.1
+        }
+
+        fn number(&self, n: i64) -> String {
+            n.to_string()
         }
     }
 
@@ -369,6 +414,8 @@ mod tests {
     fn a_sentence_is_marked_where_it_is_handed_on() {
         let said = serde_json::to_value(crate::say!("Needs {}, which is {}.", 1, 2)).unwrap();
         assert_eq!(said[MARK][0], "Needs {}, which is {}.");
-        assert_eq!(said[MARK][1], "1");
+        assert_eq!(said[MARK][1], 1);
+        let named = serde_json::to_value(crate::say!("Needs {}", "1")).unwrap();
+        assert_eq!(named[MARK][1], "1");
     }
 }

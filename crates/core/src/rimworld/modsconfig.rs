@@ -260,14 +260,10 @@ mod tests {
     }
 
     #[test]
-    fn an_id_the_file_cannot_hold_as_written_is_refused() {
+    fn an_id_the_file_cannot_hold_as_written_or_a_file_without_the_list_is_refused() {
         // The reader trims: this id would come back as another.
         let refused = with_active(TYPICAL, &ids(&[" a.a "])).unwrap_err();
         assert_eq!(refused.kind(), Kind::Refused);
-    }
-
-    #[test]
-    fn a_file_without_the_list_is_refused() {
         assert!(with_active("<ModsConfigData/>", &ids(&["a.a"])).is_err());
     }
 

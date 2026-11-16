@@ -96,7 +96,7 @@ impl Fix {
     pub fn group(&self) -> &'static str {
         match self {
             Fix::None => named("Other"),
-            Fix::Activate(_) => named("Needed and switched off"),
+            Fix::Activate(_) => named("Needed and inactive"),
             Fix::Subscribe(_) | Fix::Search(_) => named("Needed and not installed"),
             Fix::Deactivate(_) => named("Cannot be used together"),
             Fix::Trust => named("Made for another game version"),
@@ -223,7 +223,7 @@ pub fn troubles(
                 id,
                 name: Some(name),
             } => (
-                say!("Needs {}, which is installed but switched off.", name),
+                say!("Needs {}, which is installed but inactive.", name),
                 say!("Needs {}", name),
                 Fix::Activate(crate::rimworld::id::fold(
                     &crate::rimworld::id::split_steam(id).0,
@@ -682,7 +682,7 @@ mod tests {
             (fix.action(), fix.target().as_str()),
             ("activate", "a.fine")
         );
-        assert_eq!(fix.group(), "Needed and switched off");
+        assert_eq!(fix.group(), "Needed and inactive");
         let other = Fix::Deactivate(3);
         assert_eq!(
             (other.action(), other.target().as_str()),
