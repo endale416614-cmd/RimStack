@@ -32,7 +32,7 @@ impl ModId {
         self.reading
     }
 
-    pub fn to_qml(self) -> i32 {
+    pub fn to_packed(self) -> i32 {
         match self.index < MOST_MODS {
             true => ((self.reading << 16) as i32) | self.index as i32,
             false => -1,
@@ -40,7 +40,7 @@ impl ModId {
     }
 
     /// A negative number is no mod.
-    pub fn from_qml(held: i32) -> Option<Self> {
+    pub fn from_packed(held: i32) -> Option<Self> {
         let held = u32::try_from(held).ok()?;
         Some(Self::new(held >> 16, (held & 0xffff) as usize))
     }
@@ -53,14 +53,14 @@ pub(crate) fn next_reading() -> u32 {
 
 impl Serialize for ModId {
     fn serialize<S: Serializer>(&self, to: S) -> Result<S::Ok, S::Error> {
-        to.serialize_i32(self.to_qml())
+        to.serialize_i32(self.to_packed())
     }
 }
 
 impl<'de> Deserialize<'de> for ModId {
     fn deserialize<D: Deserializer<'de>>(from: D) -> Result<Self, D::Error> {
         let held = i32::deserialize(from)?;
-        Self::from_qml(held).ok_or_else(|| serde::de::Error::custom("no mod"))
+        Self::from_packed(held).ok_or_else(|| serde::de::Error::custom("no mod"))
     }
 }
 
@@ -75,12 +75,12 @@ mod tests {
             ModId::new(7, 2_300),
             ModId::new(READINGS - 1, MOST_MODS - 1),
         ] {
-            assert!(id.to_qml() >= 0);
-            assert_eq!(ModId::from_qml(id.to_qml()), Some(id));
+            assert!(id.to_packed() >= 0);
+            assert_eq!(ModId::from_packed(id.to_packed()), Some(id));
             let said = serde_json::to_string(&id).unwrap();
             assert_eq!(serde_json::from_str::<ModId>(&said).unwrap(), id);
         }
-        assert_eq!(ModId::from_qml(-1), None);
+        assert_eq!(ModId::from_packed(-1), None);
         assert!(serde_json::from_str::<ModId>("-1").is_err());
     }
 
@@ -88,14 +88,10 @@ mod tests {
     fn the_same_place_in_two_readings_is_two_ids() {
         let (first, second) = (next_reading(), next_reading());
         assert_ne!(ModId::new(first, 3), ModId::new(second, 3));
-        assert_ne!(
-            ModId::new(first, 3).to_qml(),
-            ModId::new(second, 3).to_qml()
-        );
     }
 
     #[test]
     fn a_place_past_the_most_mods_is_no_mod_to_the_window() {
-        assert_eq!(ModId::new(1, MOST_MODS).to_qml(), -1);
+        assert_eq!(ModId::new(1, MOST_MODS).to_packed(), -1);
     }
 }

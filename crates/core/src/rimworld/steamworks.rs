@@ -5,7 +5,7 @@ use crate::base::error::Error;
 use crate::base::sentence::Sentence;
 use crate::{said, say};
 
-use std::ffi::c_void;
+use std::ffi::{CStr, c_int, c_void};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -76,6 +76,36 @@ fn interface(
         // which takes nothing and returns the interface.
         unsafe { steam.get(name.as_bytes()).ok().map(|found| *found) }
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Start {
+    Plain,
+    Flat,
+    Safe,
+}
+
+impl Start {
+    // SDK 1.59 on made SteamAPI_Init an inline wrapper; the library exports
+    // SteamAPI_InitFlat and SteamAPI_InitSafe instead.
+    const ORDER: [Start; 3] = [Start::Plain, Start::Flat, Start::Safe];
+
+    fn symbol(self) -> &'static [u8] {
+        match self {
+            Start::Plain => b"SteamAPI_Init\0",
+            Start::Flat => b"SteamAPI_InitFlat\0",
+            Start::Safe => b"SteamAPI_InitSafe\0",
+        }
+    }
+}
+
+fn start_with(has: impl Fn(&[u8]) -> bool) -> Option<Start> {
+    Start::ORDER.into_iter().find(|start| has(start.symbol()))
+}
+
+fn start_of(steam: &libloading::Library) -> Option<Start> {
+    // SAFETY: looked up, never called.
+    start_with(|name| unsafe { steam.get::<unsafe extern "C" fn()>(name).is_ok() })
 }
 
 fn workshop_interface(
@@ -175,6 +205,54 @@ fn pump(run: impl Fn(), longest: Duration, mut settled: impl FnMut() -> bool) {
     }
 }
 
+fn missing(what: &str) -> Error {
+    Error::program(said!("the game's Steam library has no {}", what))
+}
+
+// SteamAPI_InitFlat(SteamErrMsg *) -> ESteamAPIInitResult: SteamErrMsg is
+// char[1024], 0 is k_ESteamAPIInitResult_OK.
+type Flat = unsafe extern "C" fn(*mut [u8; 1024]) -> c_int;
+
+/// # Safety
+/// `steam` is a Steamworks library and `start` was found in it.
+unsafe fn started(steam: &libloading::Library, start: Start) -> Result<(), Error> {
+    let refused = || said!("Steam is not running, or does not own the game");
+    // SAFETY: each symbol is called as steam_api.h declares it.
+    unsafe {
+        match start {
+            Start::Plain | Start::Safe => {
+                let init: libloading::Symbol<unsafe extern "C" fn() -> bool> = steam
+                    .get(start.symbol())
+                    .map_err(|_| missing("SteamAPI_Init"))?;
+                init()
+                    .then_some(())
+                    .ok_or_else(|| Error::program(refused()))
+            }
+            Start::Flat => {
+                let init: libloading::Symbol<Flat> = steam
+                    .get(start.symbol())
+                    .map_err(|_| missing("SteamAPI_Init"))?;
+                let mut message = [0u8; 1024];
+                match init(&mut message) {
+                    0 => Ok(()),
+                    _ => Err(Error::program(match said_by_steam(&message) {
+                        Some(message) => {
+                            said!("Steam could not be started for the game: {}", message)
+                        }
+                        None => refused(),
+                    })),
+                }
+            }
+        }
+    }
+}
+
+fn said_by_steam(message: &[u8]) -> Option<String> {
+    let message = CStr::from_bytes_until_nul(message).ok()?.to_string_lossy();
+    let message = message.trim();
+    (!message.is_empty()).then(|| message.to_string())
+}
+
 /// The process's environment must hold `environment()`. Slow: waits up to ten
 /// seconds for Steam's answers.
 pub fn act(library: &Path, action: Action, ids: &[u64]) -> Result<(), Error> {
@@ -189,7 +267,6 @@ pub fn act(library: &Path, action: Action, ids: &[u64]) -> Result<(), Error> {
         Item(libloading::Symbol<'a, Item>),
         Fetch(libloading::Symbol<'a, Fetch>),
     }
-    let missing = |what: &str| Error::program(said!("the game's Steam library has no {}", what));
     // SAFETY: the game's own Steamworks library, called as its flat C
     // interface is declared (steam_api.json): Init before anything else, the
     // Workshop and Utils interfaces only while initialised, Shutdown last.
@@ -197,9 +274,7 @@ pub fn act(library: &Path, action: Action, ids: &[u64]) -> Result<(), Error> {
     // GetAPICallResult writes at most the size it is given into an `Answer`.
     unsafe {
         let steam = libloading::Library::new(library).map_err(|e| Error::file(library, e))?;
-        let init: libloading::Symbol<unsafe extern "C" fn() -> bool> = steam
-            .get(b"SteamAPI_Init\0")
-            .map_err(|_| missing("SteamAPI_Init"))?;
+        let start = start_of(&steam).ok_or_else(|| missing("SteamAPI_Init"))?;
         let run: libloading::Symbol<unsafe extern "C" fn()> = steam
             .get(b"SteamAPI_RunCallbacks\0")
             .map_err(|_| missing("SteamAPI_RunCallbacks"))?;
@@ -227,11 +302,7 @@ pub fn act(library: &Path, action: Action, ids: &[u64]) -> Result<(), Error> {
             steam.get(b"SteamAPI_ISteamUtils_GetAPICallResult\0").ok();
         let utils_interface = interface(&steam, "SteamAPI_SteamUtils_v");
         let interface = workshop_interface(&steam).ok_or_else(|| missing("Workshop interface"))?;
-        if !init() {
-            return Err(Error::program(said!(
-                "Steam is not running, or does not own the game"
-            )));
-        }
+        started(&steam, start)?;
         let workshop = interface();
         if workshop.is_null() {
             shutdown();
@@ -389,19 +460,63 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs RimWorld installed"]
+    fn steam_is_started_by_the_oldest_way_the_library_has() {
+        let having = |names: &'static [&'static str]| {
+            move |symbol: &[u8]| {
+                names
+                    .iter()
+                    .any(|name| symbol == format!("{name}\0").as_bytes())
+            }
+        };
+        let unity = having(&["SteamAPI_Init", "SteamAPI_InitSafe"]);
+        assert_eq!(start_with(unity), Some(Start::Plain));
+        let waylith = having(&[
+            "SteamAPI_InitFlat",
+            "SteamAPI_InitSafe",
+            "SteamInternal_SteamAPI_Init",
+        ]);
+        assert_eq!(start_with(waylith), Some(Start::Flat));
+        assert_eq!(
+            start_with(having(&["SteamAPI_InitSafe"])),
+            Some(Start::Safe)
+        );
+        assert_eq!(start_with(having(&["SteamInternal_SteamAPI_Init"])), None);
+    }
+
+    #[test]
+    fn steam_s_message_is_read_up_to_its_end() {
+        let mut message = [0u8; 1024];
+        assert_eq!(said_by_steam(&message), None);
+        message[..17].copy_from_slice(b"No appID found. \0");
+        assert_eq!(said_by_steam(&message).as_deref(), Some("No appID found."));
+        assert_eq!(said_by_steam(&[b'x'; 1024]), None);
+    }
+
+    #[test]
+    #[ignore = "needs RimWorld installed; RIMSTACK_STEAM_LIBRARY names its Steam library"]
     fn real_library_has_what_is_called() {
-        let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
-        let paths =
-            crate::rimworld::paths::detect(&home, &crate::rimworld::paths::Overrides::from_env());
-        let file = library(paths.game.as_ref().unwrap()).unwrap();
+        let file = match std::env::var_os("RIMSTACK_STEAM_LIBRARY") {
+            Some(file) => std::path::PathBuf::from(file),
+            None => {
+                let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+                let paths = crate::rimworld::paths::detect(
+                    &home,
+                    &crate::rimworld::paths::Overrides::from_env(),
+                );
+                library(paths.game.as_ref().unwrap()).unwrap()
+            }
+        };
         // SAFETY: loading runs no Steam code; symbols are only looked up.
         let steam = unsafe { libloading::Library::new(&file).unwrap() };
+        assert!(start_of(&steam).is_some());
         assert!(workshop_interface(&steam).is_some());
+        assert!(interface(&steam, "SteamAPI_SteamUtils_v").is_some());
         for name in [
-            &b"SteamAPI_Init\0"[..],
+            &b"SteamAPI_RunCallbacks\0"[..],
+            b"SteamAPI_Shutdown\0",
             b"SteamAPI_ISteamUGC_SubscribeItem\0",
             b"SteamAPI_ISteamUGC_UnsubscribeItem\0",
+            b"SteamAPI_ISteamUGC_DownloadItem\0",
             b"SteamAPI_ISteamUGC_GetItemState\0",
             b"SteamAPI_ISteamUtils_IsAPICallCompleted\0",
             b"SteamAPI_ISteamUtils_GetAPICallResult\0",

@@ -346,16 +346,13 @@ mod tests {
     }
 
     #[test]
-    fn a_refusal_is_waited_out_longer_each_time_then_given_up() {
+    fn a_refusal_is_waited_out_longer_each_time_then_given_up_and_what_steam_asks_stands_to_five_minutes()
+     {
         assert_eq!(pause_after_refusal(1, None), Some(30));
         assert_eq!(pause_after_refusal(2, None), Some(60));
         assert_eq!(pause_after_refusal(4, None), Some(240));
         assert_eq!(pause_after_refusal(5, None), None);
         assert_eq!(pause_after_refusal(0, None), None);
-    }
-
-    #[test]
-    fn what_steam_asks_for_stands_when_longer_and_never_past_five_minutes() {
         assert_eq!(pause_after_refusal(1, Some(90)), Some(90));
         assert_eq!(pause_after_refusal(2, Some(5)), Some(60));
         assert_eq!(pause_after_refusal(1, Some(86_400)), Some(300));

@@ -127,7 +127,7 @@ impl App {
     pub fn record_versions(&self) {
         let record = AtLaunch {
             time: super::now_secs(),
-            workshop: self.steam_record().0.clone(),
+            workshop: self.steam_record().times.clone(),
         };
         if let Err(problem) = record.write(&self.at_launch_file()) {
             rimstack_core::problem!("{problem}");
@@ -139,7 +139,7 @@ impl App {
         let Ok((library, _)) = &*loaded else {
             return SinceLaunch::default();
         };
-        let now = &self.steam_record().0;
+        let now = &self.steam_record().times;
         let launched = launches::read(&self.launches_file()).pop().map(|l| l.time);
         let logged = Some(self.log_written() / 1000).filter(|&t| t > 0);
         let record = AtLaunch::read(&self.at_launch_file());
@@ -168,6 +168,15 @@ impl App {
             time,
             items: downloads::newest_first(rows),
         }
+    }
+
+    /// The page of the repository a Git checkout was cloned from; empty without one.
+    pub fn repository_of(&self, id: ModId) -> String {
+        let loaded = self.library();
+        let found = loaded.as_ref().as_ref().ok().and_then(|(l, _)| l.get(id));
+        found
+            .and_then(|m| rimstack_core::sources::git::page(&m.path))
+            .unwrap_or_default()
     }
 
     pub fn commits_of(&self, id: ModId) -> Vec<Note> {

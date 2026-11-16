@@ -1,32 +1,49 @@
 use rimstack_core::base::derived::Derived;
 use rimstack_core::base::locks::{Held, Shared};
 use rimstack_core::base::reread::Reread;
+use rimstack_core::sources::browse::{Transport, Web};
 use rimstack_core::{
     kept::notes::Notes, kept::settings::Settings, mods::community, mods::library,
     mods::session::Session, mods::userrules::UserRules, rimworld::paths,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard};
 use std::time::{Duration, Instant};
 
+use rimstack_core::base::waits::slow;
+
+pub mod browse;
 pub mod changed;
+mod copies;
+pub mod download_list;
 pub mod downloads;
 pub mod fetch;
+pub mod find;
 mod game;
 mod install;
+mod key;
 pub mod lists;
 pub mod load_order;
 pub mod logs;
+mod mod_facts;
 mod notes;
+mod prefs;
 mod records;
 pub mod saves;
 pub mod search;
+pub mod secret;
 mod settings;
+pub mod sweep;
 pub mod textures;
-mod upkeep;
-pub use settings::{judge_folder, newest_release, short_contrast};
+pub mod upkeep;
+mod window;
+pub use key::KeyState;
+pub use prefs::ModsView;
+pub use settings::{
+    build_label, font_choices, fonts_matching, judge_folder, newest_release, short_contrast,
+};
 
 pub static STARTED: OnceLock<Instant> = OnceLock::new();
 
@@ -46,7 +63,13 @@ pub struct Conflicts {
 
 pub type Loaded = Result<(library::Library, Duration), rimstack_core::base::error::Error>;
 
-pub type SteamRecord = (HashMap<String, u64>, HashMap<String, u64>);
+/// Steam's `appworkshop_294100.acf`, by Workshop id.
+#[derive(Default)]
+pub struct SteamRecord {
+    pub times: HashMap<String, u64>,
+    pub sizes: HashMap<String, u64>,
+    pub manifests: HashMap<String, u64>,
+}
 
 type Replacements = HashMap<String, rimstack_core::sources::replacements::Replacement>;
 
@@ -56,6 +79,24 @@ type Written = (PathBuf, u64);
 fn written(file: PathBuf) -> Written {
     let at = rimstack_core::base::watch::changed_at(&file);
     (file, at)
+}
+
+type Write = Box<dyn FnOnce() + Send>;
+
+/// `value`, already kept in memory, written to `file` off this thread: once for however many
+/// are asked while one is written, the newest, and a failure reported.
+fn write_behind<T: Send + 'static>(
+    writes: &crate::jobs::Single<T>,
+    file: PathBuf,
+    value: T,
+    write: fn(&T, &Path) -> Result<(), rimstack_core::base::error::Error>,
+) {
+    let name = format!("{} written", file.display());
+    writes.ask(&name, value, move |value| {
+        if let Err(problem) = write(&value, &file) {
+            rimstack_core::problem!("{problem}");
+        }
+    });
 }
 
 pub struct App {
@@ -68,6 +109,17 @@ pub struct App {
     system_languages: Vec<String>,
     detected_language: Derived<u64, String>,
     settings: RwLock<Settings>,
+    prefs: Arc<Derived<Written, rimstack_core::kept::prefs::Prefs>>,
+    /// The prefs kept and not yet written, with the turn of their keeping: read in place of the
+    /// file until written.
+    prefs_kept: Arc<Mutex<(u64, Option<rimstack_core::kept::prefs::Prefs>)>>,
+    prefs_writes: crate::jobs::Single<(u64, rimstack_core::kept::prefs::Prefs)>,
+    settings_writes: crate::jobs::Single<Settings>,
+    notes_writes: crate::jobs::Single<Notes>,
+    rules_writes: crate::jobs::Single<UserRules>,
+    activated_writes: crate::jobs::Single<rimstack_core::kept::activated::Since>,
+    /// What `activated.json` was last made to hold, read in its place while it is written.
+    activated_kept: Mutex<Option<rimstack_core::kept::activated::Since>>,
     install: Reread<install::Install>,
     session: OnceLock<Mutex<Session>>,
     notes: OnceLock<RwLock<Notes>>,
@@ -77,17 +129,42 @@ pub struct App {
     works_on: Derived<Written, HashSet<String>>,
     replacements: Derived<Written, Replacements>,
     workshop_names: Derived<Written, rimstack_core::rimworld::workshopdb::Names>,
+    workshop_index: Derived<(Written, Written), rimstack_core::rimworld::workshopindex::Index>,
+    sweeper: sweep::Sweeper,
+    browse_open: AtomicBool,
+    fixture: bool,
+    vault: Arc<dyn secret::Vault>,
+    transport: Arc<dyn Transport>,
+    watch: Arc<key::Watch>,
+    keyed: Mutex<key::Chosen>,
+    fixture_source: OnceLock<Arc<rimstack_core::sources::browse::Fixture>>,
+    previews_trimmed: std::sync::Once,
+    browse_details: Mutex<rimstack_core::sources::browse::Memory>,
+    download_list: OnceLock<Mutex<rimstack_core::kept::download_list::DownloadList>>,
     texture_manifest: Derived<Written, rimstack_core::mods::textures::Manifest>,
     steamcmd: Reread<Option<PathBuf>>,
     conflicts: RwLock<Option<Conflicts>>,
     /// Changes only while `conflicts` is held for writing.
     conflicts_generation: AtomicU64,
+    facts: RwLock<mod_facts::Read>,
+    facts_runs: AtomicU64,
+    facts_counted: std::sync::atomic::AtomicUsize,
     behind: RwLock<Option<HashSet<String>>>,
+    /// Why the community data last failed to download; `None` once one succeeds.
+    community_problem: RwLock<Option<rimstack_core::base::sentence::Sentence>>,
     list_on_disk: Mutex<(u64, bool)>,
     /// Read once: git installed later is not seen.
     git: OnceLock<Option<String>>,
     log_read: Mutex<Option<rimstack_core::kept::launches::LogRead>>,
-    bus: crate::changes::Bus,
+    find: find::Find,
+    rescans: crate::jobs::Single<()>,
+    log_keeping: crate::jobs::Single<()>,
+    /// Snapshots named and not yet written.
+    snapshots_named: Arc<Mutex<HashSet<String>>>,
+    /// The history's writes, snapshots and journal, to be done in the order asked.
+    records_waiting: Arc<Mutex<std::collections::VecDeque<Write>>>,
+    records_writes: crate::jobs::Single<()>,
+    bus: Arc<crate::changes::Bus>,
 }
 
 impl App {
@@ -95,8 +172,15 @@ impl App {
         let env = &paths::from_environment;
         let home = paths::home(env);
         let (settings, data) = paths::app_dirs(paths::Os::running(), &home, env);
-        Self::new(home, &settings, &data, paths::Overrides::from_env())
+        let made_up = std::env::var("RIMSTACK_FIXTURE").is_ok_and(|v| !v.is_empty() && v != "0");
+        let checking = std::env::args().any(|a| a.starts_with("--shot") || a == "--demo");
+        let app = Self::new(home, &settings, &data, paths::Overrides::from_env())
             .speaking(sys_locale::get_locales().collect())
+            .browsing_fixture(made_up);
+        match checking {
+            true => app,
+            false => app.with_vault(secret::system()),
+        }
     }
 
     pub fn speaking(self, system_languages: Vec<String>) -> Self {
@@ -113,8 +197,17 @@ impl App {
         given: paths::Overrides,
     ) -> Self {
         let settings_dir = settings_root.join("RimStack");
+        let web: Arc<dyn Transport> = Arc::new(Web::default());
         Self {
             settings: RwLock::new(Settings::read(&settings_dir.join("settings.json"))),
+            prefs: Arc::default(),
+            prefs_kept: Arc::default(),
+            prefs_writes: crate::jobs::Single::default(),
+            settings_writes: crate::jobs::Single::default(),
+            notes_writes: crate::jobs::Single::default(),
+            rules_writes: crate::jobs::Single::default(),
+            activated_writes: crate::jobs::Single::default(),
+            activated_kept: Mutex::default(),
             home,
             settings_dir,
             data_dir: data_root.join("RimStack"),
@@ -130,15 +223,37 @@ impl App {
             works_on: Derived::default(),
             replacements: Derived::default(),
             workshop_names: Derived::default(),
+            workshop_index: Derived::default(),
+            sweeper: sweep::Sweeper::default(),
+            browse_open: AtomicBool::new(false),
+            fixture: false,
+            vault: Arc::new(secret::Memory::default()),
+            transport: web.clone(),
+            watch: Arc::new(key::Watch::new(web)),
+            keyed: Mutex::default(),
+            fixture_source: OnceLock::new(),
+            previews_trimmed: std::sync::Once::new(),
+            browse_details: Mutex::new(Default::default()),
+            download_list: OnceLock::new(),
             texture_manifest: Derived::default(),
             steamcmd: Reread::new(),
             conflicts: RwLock::new(None),
             conflicts_generation: AtomicU64::new(0),
+            facts: RwLock::default(),
+            facts_runs: AtomicU64::new(0),
+            facts_counted: Default::default(),
             behind: RwLock::new(None),
+            community_problem: RwLock::new(None),
             list_on_disk: Mutex::new((0, false)),
             git: OnceLock::new(),
             log_read: Mutex::new(None),
-            bus: crate::changes::Bus::default(),
+            find: find::Find::default(),
+            rescans: crate::jobs::Single::default(),
+            log_keeping: crate::jobs::Single::default(),
+            snapshots_named: Arc::default(),
+            records_waiting: Arc::default(),
+            records_writes: crate::jobs::Single::default(),
+            bus: Arc::default(),
         }
     }
 
@@ -150,7 +265,27 @@ impl App {
         self.bus.listen(listener);
     }
 
-    /// `$XDG_DATA_HOME/RimStack` on Linux; the system's place elsewhere.
+    #[cfg(test)]
+    pub(crate) fn listening(&self) -> usize {
+        self.bus.listening()
+    }
+
+    pub fn listen_while(
+        &self,
+        listener: impl Fn(crate::changes::Changes) -> bool + Send + Sync + 'static,
+    ) {
+        self.bus.listen_while(listener);
+    }
+
+    /// Beside RimStack's own folder; inside a Flatpak that one is the sandbox's, and
+    /// RimSort's is where it keeps it on the host.
+    pub(crate) fn rimsort_dir(&self) -> PathBuf {
+        match rimstack_core::base::sandbox::sandboxed() {
+            true => self.home.join(".local/share/RimSort"),
+            false => self.data_dir.with_file_name("RimSort"),
+        }
+    }
+
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
     }
@@ -166,6 +301,10 @@ impl App {
 
     pub fn texture_manifest_file(&self) -> PathBuf {
         self.data_dir.join("textures.json")
+    }
+
+    pub fn activated_file(&self) -> PathBuf {
+        self.data_dir.join("activated.json")
     }
 
     pub fn launches_file(&self) -> PathBuf {
@@ -196,14 +335,50 @@ impl App {
         self.settings.reading()
     }
 
+    /// Kept at once; the file is written off this thread, and a failure to write it reported.
     pub fn set_setting(
         &self,
         name: &str,
         value: &str,
     ) -> Result<(), rimstack_core::base::error::Error> {
-        let mut settings = self.settings.writing();
-        settings.set(name, value)?;
-        settings.write(&self.settings_file())
+        let kept = {
+            let mut settings = self.settings.writing();
+            settings.set(name, value)?;
+            settings.clone()
+        };
+        write_behind(
+            &self.settings_writes,
+            self.settings_file(),
+            kept,
+            Settings::write,
+        );
+        Ok(())
+    }
+
+    /// Once every file kept from memory is written: before the program ends.
+    pub fn settle_writes(&self) {
+        while !(self.settings_writes.idle()
+            && self.prefs_writes.idle()
+            && self.notes_writes.idle()
+            && self.rules_writes.idle()
+            && self.activated_writes.idle()
+            && self.records_writes.idle())
+        {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    pub(crate) fn write_notes(&self, notes: Notes) {
+        write_behind(&self.notes_writes, self.notes_file(), notes, Notes::write);
+    }
+
+    pub(crate) fn write_user_rules(&self, rules: UserRules) {
+        write_behind(
+            &self.rules_writes,
+            self.user_rules_file(),
+            rules,
+            UserRules::write,
+        );
     }
 
     /// Ids: "rules", "worksOn", "replacements", "names"; on unless `databasesOff` lists them.
@@ -256,6 +431,18 @@ impl App {
             .get_or_init(|| RwLock::new(UserRules::read(&self.user_rules_file())))
     }
 
+    fn facts(&self) -> &RwLock<mod_facts::Read> {
+        &self.facts
+    }
+
+    fn facts_runs(&self) -> &AtomicU64 {
+        &self.facts_runs
+    }
+
+    fn facts_counted(&self) -> &std::sync::atomic::AtomicUsize {
+        &self.facts_counted
+    }
+
     pub fn conflicts(&self) -> &RwLock<Option<Conflicts>> {
         &self.conflicts
     }
@@ -263,6 +450,11 @@ impl App {
     /// Taken before the library is read, so a scan of an earlier library is told apart.
     pub fn conflicts_generation(&self) -> u64 {
         self.conflicts_generation.load(Ordering::Relaxed)
+    }
+
+    /// `None` until the mods are first read, rather than waiting for them: for what is drawn.
+    pub fn session_if_read(&self) -> Option<MutexGuard<'_, Session>> {
+        self.session.get().map(|session| session.held())
     }
 
     pub fn session(&self) -> MutexGuard<'_, Session> {
@@ -280,8 +472,19 @@ impl App {
         self.install().library()
     }
 
+    /// The mods as read, `None` while the first reading runs, never waiting on it.
+    pub fn library_if_read(&self) -> Option<Arc<Loaded>> {
+        self.install.now()?.library_if_read()
+    }
+
     pub fn texture_count(&self, mod_root: &Path) -> usize {
         self.install().texture_count(mod_root)
+    }
+
+    /// `rescan` off the caller's thread; asked again while one runs, it reads once more after.
+    pub fn rescan_soon(self: &Arc<Self>) {
+        let app = self.clone();
+        self.rescans.ask("rescan", (), move |()| app.rescan());
     }
 
     /// Whoever still shows the earlier reading holds it until done.
@@ -376,7 +579,12 @@ impl App {
         use rimstack_core::base::watch::{changed_at, newest};
         let paths = self.paths();
         let (record, local) = (paths.steam_record(), paths.local_mods());
-        let mods = [paths.workshop.clone(), record, local];
+        // Loading Progress writes the load times the lists show as the game finishes loading.
+        let report = paths
+            .config
+            .as_ref()
+            .map(|c| c.join("StartupImpactData.xml"));
+        let mods = [paths.workshop.clone(), record, local, report];
         // A checkout pulled outside RimStack moves HEAD; a mod changes in its folder or About.xml.
         let inside: Vec<PathBuf> = match &*self.library() {
             Ok((library, _)) => {
@@ -410,6 +618,7 @@ impl App {
     pub fn community(&self) -> Arc<Option<community::Community>> {
         let file = community::file_in(&self.data_dir);
         self.community.get(written(file.clone()), || {
+            slow("the community rules");
             community::read(&file).unwrap_or_else(|problem| {
                 rimstack_core::problem!("{problem}");
                 None
@@ -425,18 +634,20 @@ impl App {
     /// Empty if never downloaded.
     pub fn works_on(&self) -> Arc<HashSet<String>> {
         let file = self.works_on_file();
-        self.works_on
-            .get(written(file.clone()), || community::read_works_on(&file))
+        self.works_on.get(written(file.clone()), || {
+            slow("the mods known to work");
+            community::read_works_on(&file)
+        })
     }
 
     pub fn replacements(&self) -> Arc<Replacements> {
         let own = rimstack_core::sources::replacements::file_in(&self.data_dir);
         let rimsort = self
-            .data_dir
-            .with_file_name("RimSort")
+            .rimsort_dir()
             .join("dbs/UseThisInstead/replacements.json.gz");
         let file = if own.is_file() { own } else { rimsort };
         self.replacements.get(written(file.clone()), || {
+            slow("the replacements");
             rimstack_core::sources::replacements::read(&file)
         })
     }
@@ -444,6 +655,7 @@ impl App {
     pub fn workshop_names(&self) -> Arc<rimstack_core::rimworld::workshopdb::Names> {
         let file = rimstack_core::rimworld::workshopdb::file_in(&self.data_dir);
         self.workshop_names.get(written(file.clone()), || {
+            slow("the Workshop names");
             rimstack_core::rimworld::workshopdb::read(&file)
         })
     }
@@ -452,6 +664,7 @@ impl App {
     pub fn texture_manifest(&self) -> Arc<rimstack_core::mods::textures::Manifest> {
         let file = self.texture_manifest_file();
         self.texture_manifest.get(written(file.clone()), || {
+            slow("the textures made");
             rimstack_core::mods::textures::Manifest::read(&file)
         })
     }
@@ -550,6 +763,7 @@ pub(crate) mod tests {
         assert!(app.database_on("rules"));
         app.set_setting("databasesOff", "rules,names").unwrap();
         assert!(!app.database_on("rules") && app.database_on("worksOn"));
+        app.settle_writes();
         let kept = Settings::read(&app.settings_file());
         assert_eq!(kept.get("databasesOff"), Some("rules,names"));
     }

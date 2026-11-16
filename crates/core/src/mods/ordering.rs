@@ -97,16 +97,15 @@ pub fn sorted_by_category(
     }
     let held_by: Vec<String> = (0..mods.len())
         .map(|at| {
-            let pulled = mods[at].category < before[at];
+            if mods[at].category >= before[at] {
+                return String::new();
+            }
             let holder = sorted.kept.iter().find(|r| {
                 r.first == at
                     && !matches!(r.kind, Kind::Hint | Kind::CommunityBottom)
                     && mods[r.then].category == mods[at].category
             });
-            match (pulled, holder) {
-                (true, Some(rule)) => mods[rule.then].name.clone(),
-                _ => String::new(),
-            }
+            holder.map_or_else(String::new, |rule| mods[rule.then].name.clone())
         })
         .collect();
     for (m, holder) in mods.iter_mut().zip(held_by) {

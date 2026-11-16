@@ -1,10 +1,12 @@
 //! Active mods come first in each.
 
-use crate::mods::library::{Library, ModId};
+use crate::mods::library::{Installed, Library, ModId};
+use crate::rimworld::paths::Source;
+use crate::rimworld::workshop::{Version, is_id};
 use crate::sources::replacements::Replacement;
 use serde::Serialize;
 use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Item<'a> {
@@ -30,6 +32,41 @@ pub fn items<'a>(library: &'a Library, active: &HashSet<ModId>) -> HashMap<&'a s
         .collect()
 }
 
+/// SteamCMD puts a mod in the game's own folder under its Workshop id; a Git checkout is the
+/// author's, never one.
+pub fn is_copy(m: &Installed) -> bool {
+    m.source == Source::Local && !m.git && is_id(&m.folder)
+}
+
+/// The copies in the game's Mods folder, keyed by Workshop id.
+pub fn copies<'a>(library: &'a Library, active: &HashSet<ModId>) -> HashMap<&'a str, Item<'a>> {
+    let item = |(mod_id, m): (ModId, &'a Installed)| {
+        let item = Item {
+            mod_id,
+            name: m.display_name(),
+            active: active.contains(&mod_id),
+        };
+        (m.folder.as_str(), item)
+    };
+    library
+        .loadable()
+        .filter(|(_, m)| is_copy(m))
+        .map(item)
+        .collect()
+}
+
+/// Where a copy on disk came from, which says how it is updated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Origin {
+    /// Steam's own Workshop folder.
+    Steam,
+    /// Downloaded by RimStack with SteamCMD, which may update it by itself.
+    SteamCmd,
+    /// Downloaded by RimSort's SteamCMD, known by its record: updated only when asked.
+    Linked,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Behind {
@@ -37,35 +74,100 @@ pub struct Behind {
     pub mod_id: ModId,
     pub name: String,
     pub active: bool,
+    /// Seconds since 1970 when the copy on disk and the Workshop's were published.
     pub have: u64,
     pub now: u64,
+    pub origin: Origin,
+    /// Steam's version, which a failed update is held back at.
+    #[serde(skip)]
+    pub offered: Version,
 }
 
 /// Active mods first, then the most recently updated.
+pub type OnDisk = HashMap<String, (Version, Origin)>;
+
+/// Each source is the mods of one folder with their versions: a Workshop id may be in both.
 pub fn behind(
-    items: &HashMap<&str, Item>,
-    on_disk: &HashMap<String, u64>,
-    now: &HashMap<String, u64>,
+    sources: &[(&HashMap<&str, Item>, &OnDisk)],
+    now: &HashMap<String, Version>,
 ) -> Vec<Behind> {
-    let mut rows: Vec<Behind> = now
-        .iter()
-        .filter_map(|(id, &now)| {
-            let have = *on_disk.get(id)?;
-            let item = items.get(id.as_str()).filter(|_| now > have)?;
-            Some(Behind {
+    let mut rows = Vec::new();
+    for (items, on_disk) in sources {
+        for (id, &now) in now {
+            let Some(&(have, origin)) = on_disk.get(id) else {
+                continue;
+            };
+            let Some(item) = items.get(id.as_str()).filter(|_| have.behind(now)) else {
+                continue;
+            };
+            rows.push(Behind {
                 id: id.clone(),
                 mod_id: item.mod_id,
                 name: item.name.to_string(),
                 active: item.active,
-                have,
-                now,
-            })
-        })
-        .collect();
+                have: have.updated,
+                now: now.updated,
+                origin,
+                offered: now,
+            });
+        }
+    }
     rows.sort_by(|a, b| {
-        (!a.active, Reverse(a.now), &a.id).cmp(&(!b.active, Reverse(b.now), &b.id))
+        let key = |r: &Behind| (!r.active, Reverse(r.now), r.origin != Origin::Steam);
+        key(a).cmp(&key(b)).then_with(|| a.id.cmp(&b.id))
     });
     rows
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Named {
+    pub id: String,
+    pub mod_id: ModId,
+    pub name: String,
+    pub active: bool,
+}
+
+/// Active mods first, then by name.
+fn named<'a>(rows: impl Iterator<Item = (&'a str, &'a Item<'a>)>) -> Vec<Named> {
+    let mut rows: Vec<Named> = rows
+        .map(|(id, item)| Named {
+            id: id.to_string(),
+            mod_id: item.mod_id,
+            name: item.name.to_string(),
+            active: item.active,
+        })
+        .collect();
+    rows.sort_by_cached_key(|row| (!row.active, row.name.to_lowercase(), row.id.clone()));
+    rows
+}
+
+/// The copies whose version is not known, put there by hand or by another tool, that Steam
+/// still has to give.
+pub fn untracked(
+    copies: &HashMap<&str, Item>,
+    known: &OnDisk,
+    unanswered: &BTreeSet<String>,
+) -> Vec<Named> {
+    let unknown = |id: &str| !known.contains_key(id) && !unanswered.contains(id);
+    named(
+        copies
+            .iter()
+            .map(|(id, item)| (*id, item))
+            .filter(|(id, _)| unknown(id)),
+    )
+}
+
+pub fn unanswered<'a>(
+    items: impl IntoIterator<Item = &'a HashMap<&'a str, Item<'a>>>,
+    unanswered: &BTreeSet<String>,
+) -> Vec<Named> {
+    let every = items.into_iter().flat_map(|items| items.iter());
+    named(
+        every
+            .map(|(id, item)| (*id, item))
+            .filter(|(id, _)| unanswered.contains(*id)),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -282,6 +384,15 @@ mod tests {
             title: "Zebra".to_string(),
             updated: 9,
             size: 3_145_728,
+            preview_url: String::new(),
+            description: String::new(),
+            subscriptions: 0,
+            favorited: 0,
+            banned: false,
+            creator: String::new(),
+            app_id: 0,
+            collection: false,
+            ..Default::default()
         };
         let ids = ["777".to_string(), "200".to_string()];
         let lines = asked(&ids, &[details], &|id| id == "200");
@@ -300,10 +411,29 @@ mod tests {
         pairs.iter().map(|(id, at)| (id.to_string(), *at)).collect()
     }
 
+    fn at(updated: u64) -> Version {
+        Version {
+            manifest: 0,
+            updated,
+        }
+    }
+
+    fn versions(pairs: &[(&str, u64)]) -> HashMap<String, Version> {
+        pairs
+            .iter()
+            .map(|(id, t)| (id.to_string(), at(*t)))
+            .collect()
+    }
+
+    fn of_steam(pairs: &[(&str, u64)]) -> OnDisk {
+        let steam = |(id, v): (String, Version)| (id, (v, Origin::Steam));
+        versions(pairs).into_iter().map(steam).collect()
+    }
+
     #[test]
     fn a_mod_is_behind_when_the_workshop_s_copy_is_newer_than_the_one_on_disk() {
-        let on_disk = times(&[("100", 50), ("200", 10), ("300", 10), ("400", 10)]);
-        let now = times(&[
+        let on_disk = of_steam(&[("100", 50), ("200", 10), ("300", 10), ("400", 10)]);
+        let now = versions(&[
             ("100", 90),
             ("200", 20),
             ("300", 30),
@@ -311,14 +441,66 @@ mod tests {
             ("999", 99),
             ("500", 5),
         ]);
-        let rows = behind(&sample(), &on_disk, &now);
+        let rows = behind(&[(&sample(), &on_disk)], &now);
         let ids: Vec<&str> = rows.iter().map(|row| row.id.as_str()).collect();
         assert_eq!(ids, ["300", "200", "100"]);
         assert_eq!(
             (rows[2].have, rows[2].now, rows[2].mod_id),
             (50, 90, ModId::new(0, 0))
         );
-        assert!(behind(&sample(), &HashMap::new(), &now).is_empty());
+        assert!(behind(&[(&sample(), &HashMap::new())], &now).is_empty());
+    }
+
+    #[test]
+    fn a_copy_is_behind_by_its_manifest_and_says_how_it_is_updated() {
+        let kept = |manifest, origin| {
+            (
+                Version {
+                    manifest,
+                    updated: 10,
+                },
+                origin,
+            )
+        };
+        let on_disk = HashMap::from([
+            ("100".to_string(), kept(1, Origin::SteamCmd)),
+            ("200".to_string(), kept(5, Origin::Linked)),
+            ("300".to_string(), kept(7, Origin::SteamCmd)),
+        ]);
+        let offered = |manifest| Version {
+            manifest,
+            updated: 10,
+        };
+        let now = HashMap::from([
+            ("100".to_string(), offered(2)),
+            ("200".to_string(), offered(6)),
+            ("300".to_string(), offered(7)),
+        ]);
+        let rows = behind(&[(&sample(), &on_disk)], &now);
+        let found: Vec<(&str, Origin)> = rows.iter().map(|r| (r.id.as_str(), r.origin)).collect();
+        assert_eq!(found, [("200", Origin::Linked), ("100", Origin::SteamCmd)]);
+        assert_eq!(rows[1].offered, offered(2));
+    }
+
+    #[test]
+    fn a_copy_not_known_is_untracked_and_one_steam_said_nothing_of_is_listed() {
+        let known = of_steam(&[("100", 1), ("300", 1)]);
+        let rows = untracked(&sample(), &known, &BTreeSet::new());
+        let ids: Vec<&str> = rows.iter().map(|row| row.id.as_str()).collect();
+        assert_eq!(ids, ["200", "400"], "active first");
+        let gone = BTreeSet::from(["400".to_string(), "999".to_string()]);
+        let rows = untracked(&sample(), &known, &gone);
+        assert_eq!(
+            rows.len(),
+            1,
+            "one Steam no longer gives is not offered again"
+        );
+        let rows = unanswered([&sample()], &gone);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            (rows[0].id.as_str(), rows[0].name.as_str()),
+            ("400", "New Roads")
+        );
     }
 
     #[test]

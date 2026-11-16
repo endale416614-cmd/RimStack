@@ -17,6 +17,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      checks: write
     steps:
       - uses: actions/checkout@v7
       - uses: rustsec/audit-check@v2
@@ -43,8 +44,8 @@ jobs:
           token: ${{ secrets.CI_BOT_TOKEN || github.token }}
           branch: ci-versions
           delete-branch: true
-          commit-message: "CI: newer Qt, aqtinstall or linuxdeploy"
-          title: "CI: newer Qt, aqtinstall or linuxdeploy"
+          commit-message: "CI: newer linuxdeploy"
+          title: "CI: newer linuxdeploy"
           body: |
             Moved by `tools/ci-versions.py`:
 

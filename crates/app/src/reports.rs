@@ -1,5 +1,7 @@
-//! Renaming a field here renames what QML must read; each type's test lists its fields.
+//! Renaming a field here renames what the views read; each type's test lists its fields.
 
+use crate::workspace::KeyState;
+use rimstack_core::base::sentence::Sentence;
 use serde::Serialize;
 
 /// What was asked, done, or why not: `{ …what came of it }` or `{ problem }`.
@@ -45,6 +47,7 @@ pub struct SettingsReport {
     pub set_workshop: Option<String>,
     pub launch_arguments: Option<String>,
     pub launch_directly: bool,
+    pub sandboxed: bool,
     pub language: Option<String>,
     pub language_in_use: String,
     pub english: bool,
@@ -55,9 +58,17 @@ pub struct SettingsReport {
     pub version_warnings: bool,
     pub version_aside_for: Option<String>,
     pub file_hints: bool,
+    pub dim_left_out: bool,
     pub git_for_workshop: bool,
+    pub auto_updates: bool,
+    pub auto_updates_asked: bool,
+    pub update_every: Vec<Sentence>,
+    pub update_every_at: usize,
+    pub update_every_said: Sentence,
+    pub update_every_set: bool,
     pub git: Option<String>,
     pub self_check: bool,
+    pub show_mature: bool,
     pub nightly_updates: bool,
     pub logs_kept: usize,
     pub logs_kept_now: usize,
@@ -70,6 +81,7 @@ pub struct SettingsReport {
     pub config_folder: Option<String>,
     pub game_log: Option<String>,
     pub steamcmd_folder: String,
+    pub steamcmd_refused: Option<rimstack_core::base::sentence::Sentence>,
     pub settings_file: String,
     pub diagnostics_file: String,
     pub version: String,
@@ -84,6 +96,14 @@ pub struct Summary {
     pub replacements: usize,
     pub rules: usize,
     pub last_launch: Option<LastLaunch>,
+    pub kept_note: Sentence,
+    pub kept: Vec<KeptCount>,
+}
+
+#[derive(Serialize)]
+pub struct KeptCount {
+    pub label: Sentence,
+    pub value: Sentence,
 }
 
 #[derive(Serialize, Default)]
@@ -138,13 +158,36 @@ mod tests {
     fn an_answer_is_its_result_or_its_problem_and_never_both() {
         let failed: Answer<Written> = Err(rimstack_core::base::error::Error::refused("no")).into();
         assert_eq!(
-            crate::qml::values::as_shown(&failed),
+            crate::words::as_shown(&failed),
             serde_json::json!({ "problem": "no" })
         );
         let done: Answer<Written> = Ok(Written { file: "/a".into() }).into();
         assert_eq!(
-            crate::qml::values::as_shown(&done),
+            crate::words::as_shown(&done),
             serde_json::json!({ "file": "/a" })
         );
+    }
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct KeyShown {
+    pub stored: bool,
+    pub available: bool,
+    pub refused: bool,
+    pub checking: bool,
+    pub note: Option<Sentence>,
+}
+
+impl KeyShown {
+    pub fn of(state: KeyState, checking: bool, failure: Option<Sentence>) -> Self {
+        KeyShown {
+            stored: state.stored,
+            available: state.available,
+            refused: state.refused,
+            checking,
+            note: failure.or(state.note),
+        }
     }
 }

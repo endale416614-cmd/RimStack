@@ -56,7 +56,7 @@ fn files_under(dir: &Path, extension: &str, into: &mut Vec<PathBuf>) {
     }
 }
 
-/// Counts go through `say_n!` or `Theme.plural`: `fill` with a bare `{} mods` reads "1 mods".
+/// Counts go through `say_n!`: `say!` with a bare `{} mods` reads "1 mods".
 #[test]
 fn every_counted_sentence_has_its_singular() {
     const NOUNS: [&str; 17] = [
@@ -80,7 +80,6 @@ fn every_counted_sentence_has_its_singular() {
     ];
     let app = Path::new(env!("CARGO_MANIFEST_DIR")).join("../app");
     let mut sources = Vec::new();
-    files_under(&app.join("qml"), "qml", &mut sources);
     files_under(&app.join("src"), "rs", &mut sources);
     files_under(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),

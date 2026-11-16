@@ -35,6 +35,12 @@ for n in $(seq -w 1 100); do
     about "$folder" "fixture.mod$n" "Fixture Mod $n" "$(printf "$extra")" "$version"
     kind=${kinds[$((10#$n % 3))]}
     mkdir -p "$folder/$kind"
+    if [ "$n" = 001 ]; then
+        mkdir -p "$folder/1.4/Defs" "$folder/1.6/Defs" "$folder/Code"
+        printf '<Defs>FixtureOldVersion</Defs>\n' > "$folder/1.4/Defs/Old.xml"
+        printf '<Defs>FixtureNewVersion</Defs>\n' > "$folder/1.6/Defs/New.xml"
+        printf '// FixtureProbe\n' > "$folder/Code/Probe.cs"
+    fi
     case $kind in
         Defs) printf '<Defs><ThingDef><defName>Fixture%s</defName></ThingDef></Defs>\n' "$n" > "$folder/Defs/Things.xml" ;;
         Patches) printf '<Patch><Operation Class="PatchOperationAdd"><xpath>Defs</xpath><value/></Operation></Patch>\n' > "$folder/Patches/Patch.xml" ;;

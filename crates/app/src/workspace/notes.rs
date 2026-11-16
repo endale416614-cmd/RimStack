@@ -46,11 +46,9 @@ impl App {
         if !differs {
             return false;
         }
-        let written = all.write(&self.notes_file());
+        let kept = all.clone();
         drop(all);
-        if let Err(problem) = written {
-            rimstack_core::problem!("{problem}");
-        }
+        self.write_notes(kept);
         self.publish(changes);
         true
     }
@@ -133,11 +131,9 @@ impl App {
         if !changed {
             return;
         }
-        let written = yours.write(&self.user_rules_file());
+        let kept = yours.clone();
         drop(yours);
-        if let Err(problem) = written {
-            rimstack_core::problem!("{problem}");
-        }
+        self.write_user_rules(kept);
         self.publish(Changes::RULES | Changes::PROBLEMS);
     }
 }
@@ -166,6 +162,7 @@ mod tests {
         let id = roads(&app);
         app.set_note(id, "travel, maps", " far ");
         app.add_tag(&[id], "travel");
+        app.settle_writes();
         let kept = rimstack_core::kept::notes::Notes::read(&app.notes_file());
         let note = kept.get("ann.roads").unwrap();
         assert_eq!(

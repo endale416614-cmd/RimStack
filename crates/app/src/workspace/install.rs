@@ -21,6 +21,14 @@ pub struct Install {
     texture_counts: Mutex<BTreeMap<PathBuf, usize>>,
 }
 
+/// `cell`'s value, read now when nobody has read it: a wait that `waits` hears of.
+fn once<'a, T>(cell: &'a OnceLock<T>, what: &str, read: impl FnOnce() -> T) -> &'a T {
+    if cell.get().is_none() {
+        rimstack_core::base::waits::slow(what);
+    }
+    cell.get_or_init(read)
+}
+
 impl Install {
     pub fn of(paths: Arc<Paths>) -> Self {
         Self {
@@ -57,7 +65,11 @@ impl Install {
             }
             Arc::new(loaded)
         };
-        self.library.get_or_init(load).clone()
+        once(&self.library, "the mod folders", load).clone()
+    }
+
+    pub fn library_if_read(&self) -> Option<Arc<Loaded>> {
+        self.library.get().cloned()
     }
 
     pub fn on_disk(&self) -> Vec<String> {
@@ -72,18 +84,21 @@ impl Install {
             let file = self.paths.steam_record();
             let record = file.and_then(|file| std::fs::read_to_string(file).ok());
             let record = record.unwrap_or_default();
-            Arc::new((
-                rimstack_core::rimworld::workshop::installed_times(&record),
-                rimstack_core::rimworld::workshop::installed_sizes(&record),
-            ))
+            use rimstack_core::rimworld::workshop;
+            Arc::new(SteamRecord {
+                times: workshop::installed_times(&record),
+                sizes: workshop::installed_sizes(&record),
+                manifests: workshop::installed_manifests(&record),
+            })
         };
-        self.steam_record.get_or_init(read).clone()
+        once(&self.steam_record, "Steam's record of the mods", read).clone()
     }
 
     pub fn startup(&self) -> Arc<Measured> {
-        self.startup
-            .get_or_init(|| Arc::new(self.read_startup()))
-            .clone()
+        once(&self.startup, "the game's load times", || {
+            Arc::new(self.read_startup())
+        })
+        .clone()
     }
 
     fn read_startup(&self) -> Measured {
@@ -119,7 +134,7 @@ impl Install {
             });
             Arc::new(ids)
         };
-        self.newest_save.get_or_init(read).clone()
+        once(&self.newest_save, "the newest save", read).clone()
     }
 
     pub fn official(&self) -> Arc<Vec<Official>> {
@@ -132,7 +147,7 @@ impl Install {
                     .unwrap_or_default(),
             )
         };
-        self.official.get_or_init(read).clone()
+        once(&self.official, "the official content", read).clone()
     }
 
     pub fn texture_count(&self, mod_root: &Path) -> usize {

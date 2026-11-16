@@ -1,32 +1,38 @@
 use super::*;
 
-fn id(n: usize) -> ModId {
+pub(super) fn id(n: usize) -> ModId {
     ModId::new(0, n)
 }
 
-fn m(name: &str, author: &str, category: Category) -> Mod {
+pub(super) fn m(name: &str, author: &str, category: Category) -> Mod {
     Mod {
         id: String::new(),
         tags: Vec::new(),
         local: false,
         workshop: false,
         git: false,
+        leftover: false,
         code: false,
         patched: Default::default(),
         sub: String::new(),
         load_micros: None,
+        updated: None,
+        size: None,
+        downloaded: None,
+        activated: None,
         filed: category,
         chosen: false,
         held_by: String::new(),
         name: name.into(),
         author: author.into(),
         version: "1.0".into(),
+        latest_game: String::new(),
         category,
         installed: None,
     }
 }
 
-fn sample() -> GroupedList {
+pub(super) fn sample() -> GroupedList {
     GroupedList::new(vec![
         m("Harmony", "pardeike", Category::Loaders),
         m("Core", "Ludeon", Category::Game),
@@ -75,7 +81,6 @@ fn flat_list_has_no_headers_filters_and_appends() {
     assert_eq!(list.insert_in_category(m("New", "x", Category::Loaders)), 6);
     list.set_filter("dubwise");
     assert_eq!(list.rows(), &[Row::Mod { index: 0 }, Row::Mod { index: 4 }]);
-    assert_eq!(list.toggle(Category::Content), Change::Reset);
 }
 
 #[test]
@@ -87,6 +92,16 @@ fn replacing_the_mods_keeps_the_filter() {
     list.set_mods(mods);
     assert_eq!(list.mods()[0].name, "Rimefeller");
     assert_eq!(list.rows(), &[Row::Mod { index: 0 }, Row::Mod { index: 1 }]);
+}
+
+#[test]
+fn a_list_read_again_folds_what_the_earlier_one_folded() {
+    let mut earlier = sample();
+    earlier.toggle(Category::Game);
+    let mut list = sample();
+    list.keep_folds_of(&earlier);
+    assert_eq!(list.rows()[2], header(Category::Game, 2, true));
+    assert_eq!(list.rows()[3], header(Category::Libraries, 1, false));
 }
 
 #[test]
@@ -128,7 +143,7 @@ fn neighbours_in_a_sub_category_of_yours_sit_under_its_row() {
     );
     assert_eq!(list.subs(Category::Content), ["Genes"]);
     assert!(list.subs(Category::Textures).is_empty());
-    assert_eq!(list.toggle(Category::Content), Change::Reset);
+    list.toggle(Category::Content);
     assert_eq!(list.rows().len(), 3);
     list.toggle(Category::Content);
     list.set_filter("b");
@@ -184,6 +199,58 @@ fn a_list_can_be_shown_by_a_column_without_changing_the_load_order() {
     list.show_by(None);
     assert_eq!(list.mods()[0].name, "Beta");
     assert_eq!(list.rows().len(), 6);
+}
+
+#[test]
+fn shown_by_group_each_category_and_tag_comes_once_without_changing_the_load_order() {
+    let tagged = |name: &str, category, tag: &str| {
+        let mut m = m(name, "", category);
+        m.sub = tag.into();
+        m
+    };
+    let mut list = GroupedList::new(vec![
+        tagged("A", Category::Content, "Combat"),
+        tagged("B", Category::Content, ""),
+        tagged("C", Category::Content, "Quality"),
+        tagged("D", Category::Content, "Combat"),
+        tagged("E", Category::Libraries, ""),
+        tagged("F", Category::Content, ""),
+    ]);
+    let sub = |first, count, collapsed| Row::Sub {
+        first,
+        count,
+        collapsed,
+    };
+    let at = |index| Row::Mod { index };
+    list.show_by(Some((SortKey::Group, false)));
+    assert_eq!(
+        list.rows(),
+        &[
+            header(Category::Libraries, 1, false),
+            at(4),
+            header(Category::Content, 5, false),
+            at(1),
+            at(5),
+            sub(0, 2, false),
+            at(0),
+            at(3),
+            sub(2, 1, false),
+            at(2),
+        ]
+    );
+    assert_eq!(names(&list), ["A", "B", "C", "D", "E", "F"]);
+    list.toggle_sub(0);
+    assert_eq!(list.rows()[5..7], [sub(0, 2, true), sub(2, 1, false)]);
+    list.set_filter("d");
+    assert_eq!(
+        list.rows(),
+        &[header(Category::Content, 1, false), sub(3, 1, true)]
+    );
+    list.set_filter("");
+    list.toggle(Category::Content);
+    assert_eq!(list.rows().len(), 3);
+    list.show_by(None);
+    assert_eq!(list.rows()[0], header(Category::Content, 4, true));
 }
 
 #[test]
@@ -274,27 +341,69 @@ fn source_terms_tell_the_workshop_from_git_checkouts_and_the_game() {
     assert!(names(&list).is_empty());
 }
 
+pub(super) fn shown(list: &GroupedList) -> usize {
+    let rows = list.rows().iter();
+    rows.filter(|r| matches!(r, Row::Mod { .. })).count()
+}
+
+fn dimmed() -> GroupedList {
+    let mut list = sample();
+    list.set_left_out(LeftOut::Dimmed);
+    list
+}
+
 #[test]
-fn a_side_term_empties_the_other_list_and_both_empty_both() {
-    let mut active = sample();
-    let mut inactive = sample();
+fn a_side_term_leaves_the_other_list_out_and_both_leave_both() {
+    let mut active = dimmed();
+    let mut inactive = dimmed();
     let count = |list: &GroupedList| list.matching();
+    let out = |list: &GroupedList| list.left_out().is_some();
 
     active.set_filter_on(Side::Active, "is:active");
     inactive.set_filter_on(Side::Inactive, "is:active");
     assert_eq!((count(&active), count(&inactive)), (6, 0));
-    assert!(inactive.rows().is_empty());
+    assert_eq!((out(&active), out(&inactive)), (false, true));
+    assert_eq!(shown(&inactive), 6);
 
     active.set_filter_on(Side::Active, "is:inactive royalty");
     inactive.set_filter_on(Side::Inactive, "is:inactive royalty");
     assert_eq!((count(&active), count(&inactive)), (0, 1));
+    assert_eq!((shown(&active), shown(&inactive)), (6, 1));
 
     active.set_filter_on(Side::Active, "is:active is:inactive");
     inactive.set_filter_on(Side::Inactive, "is:inactive is:active");
     assert_eq!((count(&active), count(&inactive)), (0, 0));
+    assert!(out(&active) && out(&inactive));
 
     active.set_filter("is:inactive");
     assert_eq!(count(&active), 6);
+    assert!(!out(&active));
+}
+
+#[test]
+fn any_filter_that_matches_nothing_in_a_list_leaves_it_out() {
+    let mut list = dimmed();
+    list.set_filter("dub");
+    assert_eq!(
+        (list.matching(), shown(&list), list.left_out()),
+        (2, 2, None)
+    );
+    list.set_filter("author:nobody");
+    assert_eq!((list.matching(), shown(&list)), (0, 6));
+    assert_eq!(list.left_out(), Some(LeftOut::Dimmed));
+    list.set_filter("");
+    assert_eq!((list.matching(), list.left_out()), (6, None));
+}
+
+#[test]
+fn a_list_left_out_hidden_shows_nothing_and_dimmed_again_shows_all() {
+    let mut list = sample();
+    list.set_filter("author:nobody");
+    assert!(list.rows().is_empty());
+    assert_eq!(list.left_out(), Some(LeftOut::Hidden));
+    list.set_left_out(LeftOut::Dimmed);
+    assert_eq!(shown(&list), 6);
+    assert_eq!(list.left_out(), Some(LeftOut::Dimmed));
 }
 
 #[test]
@@ -320,9 +429,28 @@ fn is_terms_ask_about_the_flags_given_and_forget_them_when_the_order_changes() {
 }
 
 #[test]
+fn in_search_keeps_the_mods_flagged_by_a_search_and_none_when_there_were_none() {
+    let mut list = GroupedList::flat(sample().mods().to_vec());
+    list.set_filter("in:search");
+    list.set_flags(vec![0; 6]);
+    assert!(list.rows().is_empty());
+    list.set_flags(vec![
+        0,
+        flag::IN_SEARCH,
+        0,
+        0,
+        flag::IN_SEARCH | flag::ERROR,
+        0,
+    ]);
+    assert_eq!(list.rows(), &[Row::Mod { index: 1 }, Row::Mod { index: 4 }]);
+    list.set_filter("in:search is:error");
+    assert_eq!(list.rows(), &[Row::Mod { index: 4 }]);
+}
+
+#[test]
 fn a_list_can_be_arranged_by_name_or_by_category() {
     let mut list = sample();
-    list.arrange(true);
+    list.arrange(Some((SortKey::Name, false)));
     let names: Vec<&str> = list.mods().iter().map(|m| m.name.as_str()).collect();
     assert_eq!(
         names,
@@ -336,9 +464,51 @@ fn a_list_can_be_arranged_by_name_or_by_category() {
         ]
     );
     assert!(!list.is_grouped() && list.rows().len() == 6);
-    list.arrange(false);
+    list.arrange(None);
     assert_eq!(list.mods()[0].name, "Harmony");
     assert!(list.is_grouped());
+}
+
+fn names(list: &GroupedList) -> Vec<&str> {
+    list.mods().iter().map(|m| m.name.as_str()).collect()
+}
+
+#[test]
+fn a_mod_without_the_value_comes_last_either_way_and_a_tie_goes_by_name() {
+    let mut mods = vec![
+        m("Local", "", Category::Content),
+        m("Old", "b", Category::Content),
+        m("new", "a", Category::Content),
+        m("Also new", "c", Category::Content),
+    ];
+    mods[1].updated = Some(100);
+    mods[2].updated = Some(900);
+    mods[3].updated = Some(900);
+    let mut list = GroupedList::new(mods);
+    list.arrange(Some((SortKey::Updated, true)));
+    assert_eq!(names(&list), ["Also new", "new", "Old", "Local"]);
+    assert!(!list.is_grouped());
+    list.arrange(Some((SortKey::Updated, false)));
+    assert_eq!(names(&list), ["Old", "Also new", "new", "Local"]);
+    list.arrange(Some((SortKey::Author, true)));
+    assert_eq!(names(&list), ["Also new", "Old", "new", "Local"]);
+}
+
+#[test]
+fn mods_go_by_package_id_and_by_size() {
+    let mut mods = vec![
+        m("Zeta", "", Category::Content),
+        m("Alpha", "", Category::Content),
+    ];
+    mods[0].id = "a.zeta".into();
+    mods[1].id = "B.alpha".into();
+    mods[0].size = Some(10);
+    mods[1].size = Some(2_000);
+    let mut list = GroupedList::new(mods);
+    list.arrange(Some((SortKey::PackageId, false)));
+    assert_eq!(names(&list), ["Zeta", "Alpha"]);
+    list.arrange(Some((SortKey::Size, true)));
+    assert_eq!(names(&list), ["Alpha", "Zeta"]);
 }
 
 #[test]
@@ -378,19 +548,9 @@ fn runs_count_the_headings_a_list_needs() {
 }
 
 #[test]
-fn empty_list_has_no_rows() {
-    let mut list = GroupedList::new(Vec::new());
-    assert!(list.rows().is_empty());
-    list.set_filter("x");
-    assert!(list.rows().is_empty());
-    assert_eq!(list.toggle(Category::Content), Change::Reset);
-}
-
-#[test]
 fn collapsing_removes_the_rows_under_one_header() {
     let mut list = sample();
-    let change = list.toggle(Category::Game);
-    assert_eq!(change, Change::Removed { first: 3, count: 2 });
+    list.toggle(Category::Game);
     assert_eq!(list.rows()[2], header(Category::Game, 2, true));
     assert_eq!(list.rows()[3], header(Category::Libraries, 1, false));
 }
@@ -400,20 +560,19 @@ fn expanding_puts_them_back() {
     let mut list = sample();
     let before = list.rows().to_vec();
     list.toggle(Category::Game);
-    let change = list.toggle(Category::Game);
-    assert_eq!(change, Change::Inserted { first: 3, count: 2 });
+    list.toggle(Category::Game);
     assert_eq!(list.rows(), before.as_slice());
 }
 
 #[test]
-fn toggling_a_category_that_is_not_shown_asks_for_a_reset() {
+fn folding_a_category_that_is_not_shown_changes_no_row() {
     let mut list = sample();
-    assert_eq!(list.toggle(Category::Textures), Change::Reset);
+    list.toggle(Category::Textures);
     assert_eq!(list.rows().len(), 10);
 }
 
 #[test]
-fn filter_keeps_matches_and_drops_empty_groups() {
+fn filter_keeps_matches_drops_empty_groups_and_ignores_case() {
     let mut list = sample();
     list.set_filter("dub");
     assert_eq!(
@@ -424,20 +583,10 @@ fn filter_keeps_matches_and_drops_empty_groups() {
             Row::Mod { index: 5 }
         ]
     );
-}
-
-#[test]
-fn filter_matches_author_and_ignores_case() {
-    let mut list = sample();
-    list.set_filter("LUDEON");
-    assert_eq!(
-        list.rows(),
-        &[
-            header(Category::Game, 2, false),
-            Row::Mod { index: 1 },
-            Row::Mod { index: 2 }
-        ]
-    );
+    for (term, rows) in [("LUDEON", 3), ("zzz", 0), ("", 10)] {
+        list.set_filter(term);
+        assert_eq!(list.rows().len(), rows, "filter {term:?}");
+    }
 }
 
 #[test]
@@ -450,26 +599,13 @@ fn filter_ignores_case_for_non_ascii_letters() {
 }
 
 #[test]
-fn filter_with_no_match_shows_nothing_and_clearing_restores() {
-    let mut list = sample();
-    list.set_filter("zzz");
-    assert!(list.rows().is_empty());
-    list.set_filter("");
-    assert_eq!(list.rows().len(), 10);
-}
-
-#[test]
-fn moving_a_mod_changes_load_order_and_regroups() {
+fn moving_a_mod_regroups_and_a_bad_index_changes_nothing() {
     let mut list = sample();
     list.move_mod(5, 0);
     assert_eq!(list.mods()[0].name, "Rimefeller");
     assert_eq!(list.rows()[0], header(Category::Content, 1, false));
     assert_eq!(list.rows()[2], header(Category::Loaders, 1, false));
-}
 
-#[test]
-fn moving_with_a_bad_index_changes_nothing() {
-    let mut list = sample();
     let before = list.rows().to_vec();
     list.move_mod(99, 0);
     list.move_mod(0, 99);
@@ -545,22 +681,8 @@ fn folding_a_category_with_a_group_in_it_is_not_one_row_per_mod() {
     mods[5].sub = "Dubs".into();
     let mut list = GroupedList::new(mods);
     let before = list.rows().len();
-    assert_eq!(list.toggling(Category::Content), Change::Reset);
-    assert_eq!(list.toggle(Category::Content), Change::Reset);
+    list.toggle(Category::Content);
     assert_eq!(before - list.rows().len(), 3);
-}
-
-#[test]
-fn what_folding_would_change_is_known_before_it_happens() {
-    let mut list = sample();
-    let told = list.toggling(Category::Game);
-    assert_eq!(told, Change::Removed { first: 3, count: 2 });
-    assert_eq!(list.rows().len(), 10);
-    assert_eq!(list.toggle(Category::Game), told);
-    assert_eq!(
-        list.toggling(Category::Game),
-        Change::Inserted { first: 3, count: 2 }
-    );
 }
 
 #[test]
@@ -573,7 +695,7 @@ fn mods_that_share_a_name_are_twins_whatever_the_case() {
     assert_eq!(twins(&mods), [true, false, true]);
 }
 
-fn installed_sample() -> GroupedList {
+pub(super) fn installed_sample() -> GroupedList {
     let mut mods = sample().mods().to_vec();
     for (at, m) in mods.iter_mut().enumerate() {
         m.installed = (m.name != "Royalty").then_some(id(100 + at));
@@ -683,4 +805,68 @@ fn a_mod_goes_below_another_only_when_that_one_loads_after_it() {
     assert_eq!(list.below(id(100), id(104)), Some((0, 4)));
     assert_eq!(list.below(id(104), id(100)), None);
     assert_eq!(list.below(id(100), id(999)), None);
+}
+
+pub(super) fn read_with(files: &[(&str, &str)]) -> Arc<Facts> {
+    let tmp = tempfile::tempdir().unwrap();
+    for (file, text) in files {
+        let path = tmp.path().join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    let folders = crate::rimworld::loadfolders::every_folder(tmp.path(), "1.6");
+    Arc::new(Facts::read(folders, &HashSet::new()))
+}
+
+pub(super) fn installed_list() -> GroupedList {
+    let mods = (0..3).map(|n| {
+        let mut one = m(&format!("Mod {n}"), "x", Category::Content);
+        one.installed = Some(id(n));
+        one
+    });
+    GroupedList::flat(mods.collect())
+}
+
+#[test]
+fn file_words_keep_the_mods_read_that_have_them_and_count_those_not_read_yet() {
+    let gold = read_with(&[
+        (
+            "Defs/a.xml",
+            "<Defs><ThingDef><defName>Gold</defName></ThingDef></Defs>",
+        ),
+        ("Textures/a.png", "x"),
+    ]);
+    let patcher = read_with(&[(
+        "Patches/p.xml",
+        r#"<Patch><Operation><xpath>Defs/ThingDef[defName="Gold"]</xpath></Operation></Patch>"#,
+    )]);
+    let mut list = installed_list();
+    list.set_filter("has:defs");
+    assert_eq!((list.rows().len(), list.unread()), (0, 3));
+    list.set_facts(Arc::new(HashMap::from([(id(0), gold), (id(1), patcher)])));
+    assert_eq!(
+        (list.rows(), list.unread()),
+        (&[Row::Mod { index: 0 }][..], 1)
+    );
+    list.set_filter("has:patches");
+    assert_eq!(list.rows(), &[Row::Mod { index: 1 }]);
+    list.set_filter("has:textures defines:GOLD");
+    assert_eq!(list.rows(), &[Row::Mod { index: 0 }]);
+    list.set_filter("patchesdef:gold");
+    assert_eq!(list.rows(), &[Row::Mod { index: 1 }]);
+    list.set_filter("defines:gold patchesdef:gold");
+    assert!(list.rows().is_empty());
+    list.set_filter("has:sounds");
+    assert!(list.rows().is_empty());
+    list.set_filter("has:code");
+    assert_eq!(list.unread(), 0);
+    list.set_filter("has:nothing");
+    assert_eq!((list.rows().len(), list.unread()), (0, 0));
+}
+
+#[test]
+fn a_mod_that_is_not_installed_is_never_unread() {
+    let mut list = GroupedList::flat(vec![m("Gone", "x", Category::Content)]);
+    list.set_filter("has:defs");
+    assert_eq!(list.unread(), 0);
 }

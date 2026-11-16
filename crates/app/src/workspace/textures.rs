@@ -4,13 +4,17 @@ use rimstack_core::base::error::Error;
 use rimstack_core::base::sentence::Sentence;
 use rimstack_core::base::sizes;
 use rimstack_core::mods::hidden::{self, Hidden};
-use rimstack_core::mods::library::{Library, ModId};
+use rimstack_core::mods::library::{Installed, Library, ModId};
 use rimstack_core::mods::{conflicts, ddsaudit, texdiff, textures};
+use rimstack_core::rimworld::engine::Engine;
 use rimstack_core::{said, say, say_n};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+mod spare;
+pub use spare::SpareFound;
 
 const PROGRESS_EVERY: usize = 20;
 
@@ -44,7 +48,7 @@ pub struct TexturesShown<'a> {
     pub first_waiting: Option<ModId>,
 }
 
-pub fn shown(rows: &[textures::Row], active_only: bool) -> TexturesShown<'_> {
+pub fn shown(rows: &[textures::Row], active_only: bool, converts: bool) -> TexturesShown<'_> {
     let on_show: Vec<&textures::Row> = rows.iter().filter(|r| !active_only || r.active).collect();
     let ids = |keep: &dyn Fn(&textures::Row) -> bool| -> Vec<ModId> {
         on_show.iter().filter(|r| keep(r)).map(|r| r.id).collect()
@@ -76,7 +80,7 @@ pub fn shown(rows: &[textures::Row], active_only: bool) -> TexturesShown<'_> {
         have: total - on_show.iter().map(|r| r.not_converted).sum::<usize>(),
         png_mb,
         dds_mb,
-        size_said: sizes_said(png_mb, dds_mb),
+        size_said: sizes_said(png_mb, dds_mb, converts),
         remaining: ids(&|r| !r.skipped && r.not_converted > 0),
         stale: ids(&|r| !r.skipped && r.out_of_date > 0),
         made_files: made.iter().map(|r| r.converted + r.out_of_date).sum(),
@@ -98,13 +102,13 @@ pub fn shown(rows: &[textures::Row], active_only: bool) -> TexturesShown<'_> {
     }
 }
 
-fn sizes_said(png_mb: f64, dds_mb: f64) -> Option<Sentence> {
+fn sizes_said(png_mb: f64, dds_mb: f64, converts: bool) -> Option<Sentence> {
     if png_mb <= 0.0 {
         return None;
     }
     let (png, dds) = sizes::together(png_mb, dds_mb);
     let sizes = say!("{} PNG  →  {} DDS", png.inside(), dds.inside());
-    if dds_mb <= png_mb * 1.2 {
+    if !converts || dds_mb <= png_mb * 1.2 {
         return Some(sizes);
     }
     let bigger = say!(
@@ -112,6 +116,18 @@ fn sizes_said(png_mb: f64, dds_mb: f64) -> Option<Sentence> {
         format!("{:.1}", dds_mb / png_mb)
     );
     Some(Sentence::listed(vec![sizes, bigger]))
+}
+
+pub struct TextureRows {
+    pub rows: Vec<textures::Row>,
+    /// Whether the game is one a DDS loads faster in.
+    pub converts: bool,
+}
+
+pub fn no_conversion() -> Sentence {
+    say!(
+        "From 1.7 the game compresses each texture once and keeps it, so a DDS no longer loads faster: RimStack converts nothing. The DDS files only take room."
+    )
 }
 
 #[derive(Serialize)]
@@ -124,13 +140,13 @@ pub struct Refused {
     pub why: Sentence,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, PartialEq)]
 pub struct Side {
     pub id: ModId,
     pub name: String,
 }
 
-#[derive(Serialize, Clone, Default)]
+#[derive(Serialize, Clone, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Shared {
     pub name: String,
@@ -150,7 +166,7 @@ pub struct Shared {
     pub used: Sentence,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Comparison {
     pub earlier: Side,
@@ -165,7 +181,6 @@ pub struct Comparison {
 }
 
 impl Comparison {
-    /// Ignores case.
     pub fn named(&self, filter: &str) -> Vec<&Shared> {
         let filter = filter.trim().to_lowercase();
         self.textures
@@ -192,25 +207,34 @@ impl App {
         settings.listed("textureSkip").map(String::from).collect()
     }
 
-    pub fn texture_rows(&self) -> Vec<textures::Row> {
+    /// An unread library counts as a game where a DDS loads faster.
+    pub fn texture_rows(&self) -> TextureRows {
         let loaded = self.library();
         let Ok((library, _)) = &*loaded else {
-            return Vec::new();
+            return TextureRows {
+                rows: Vec::new(),
+                converts: true,
+            };
         };
+        let converts = library.engine().dds_loads_faster();
         let manifest = self.texture_manifest();
         let skipped = self.skipped_textures();
         let active = self.active_now(library);
-        let all: Vec<_> = library.ids().collect();
+        let all: Vec<_> = library.loadable().collect();
         let rows = all
             .par_iter()
             .filter_map(|&(i, m)| {
                 let counted = textures::summarize(&m.path, &manifest);
                 let skipped = m.key().is_some_and(|k| skipped.contains(&k));
                 let active = active.contains(&i);
-                textures::Row::of(i, m.display_name(), &m.path, counted, skipped, active)
+                let name = m.display_name();
+                textures::Row::of(i, name, &m.path, counted, skipped, active, converts)
             })
             .collect();
-        textures::in_order(rows)
+        TextureRows {
+            rows: textures::in_order(rows),
+            converts,
+        }
     }
 
     pub fn skip_textures(&self, id: ModId, skip: bool) -> Result<(), Error> {
@@ -234,7 +258,8 @@ impl App {
         Ok(())
     }
 
-    /// With `remove`, deletes only the DDS files RimStack made.
+    /// With `remove`, deletes only the DDS files RimStack made; without, converts
+    /// nothing from 1.7.
     pub fn convert_textures(
         &self,
         ids: &[ModId],
@@ -246,6 +271,9 @@ impl App {
         let Ok((library, _)) = &*loaded else {
             return Sentence::default();
         };
+        if !remove && !library.engine().dds_loads_faster() {
+            return no_conversion();
+        }
         let roots: Vec<&Path> = ids
             .iter()
             .filter_map(|&i| library.get(i))
@@ -253,13 +281,16 @@ impl App {
             .collect();
         let file = self.texture_manifest_file();
         let mut manifest = textures::Manifest::read(&file);
-        let total: usize = roots
-            .iter()
-            .map(|root| {
-                let counted = textures::summarize(root, &manifest);
-                counted.not_converted() + counted.out_of_date
-            })
-            .sum();
+        let total: usize = match remove {
+            true => 0,
+            false => roots
+                .iter()
+                .map(|root| {
+                    let counted = textures::summarize(root, &manifest);
+                    counted.not_converted() + counted.out_of_date
+                })
+                .sum(),
+        };
         let done = AtomicUsize::new(0);
         let mut failed = 0;
         for root in roots {
@@ -268,7 +299,11 @@ impl App {
             }
             let mut parts = textures::Parts::default();
             if remove {
+                let listed = manifest.made_in(root);
                 textures::remove(root, &mut manifest);
+                if manifest.made_in(root) == listed {
+                    continue;
+                }
             } else {
                 let converted = textures::convert(root, &mut manifest, stop, &|| {
                     let n = done.fetch_add(1, Ordering::Relaxed) + 1;
@@ -325,19 +360,26 @@ impl App {
         let Ok((library, _)) = &*loaded else {
             return Vec::new();
         };
-        library
-            .installed
-            .par_iter()
+        let engine = library.engine();
+        let active = self.active_keys(library);
+        let mods: Vec<&Installed> = library.loadable().map(|(_, m)| m).collect();
+        mods.into_par_iter()
             .flat_map_iter(|m| {
-                ddsaudit::audit(&m.path).into_iter().map(|bad| Refused {
-                    of_mod: m.display_name().to_string(),
-                    name: bad
-                        .file
-                        .file_name()
-                        .map_or(String::new(), |n| n.to_string_lossy().into_owned()),
-                    file: bad.file.to_string_lossy().into_owned(),
-                    why: bad.why,
-                })
+                let loaded = match engine {
+                    Engine::Unity => Vec::new(),
+                    Engine::Waylith => self.folders_read(library, &m.path, &active),
+                };
+                ddsaudit::audit(&m.path, engine, &loaded)
+                    .into_iter()
+                    .map(|bad| Refused {
+                        of_mod: m.display_name().to_string(),
+                        name: bad
+                            .file
+                            .file_name()
+                            .map_or(String::new(), |n| n.to_string_lossy().into_owned()),
+                        file: bad.file.to_string_lossy().into_owned(),
+                        why: bad.why,
+                    })
             })
             .collect()
     }
@@ -351,20 +393,32 @@ impl App {
         failed
     }
 
-    fn loaded_folders(&self, library: &Library, id: ModId) -> Vec<PathBuf> {
+    fn active_keys(&self, library: &Library) -> HashSet<String> {
         let list = self.session().current().to_vec();
-        let active: HashSet<String> = library
+        library
             .arrange(&list)
             .active
             .iter()
             .filter_map(|m| library.get(m.installed?)?.key())
-            .collect();
-        let Some(root) = library.get(id).map(|m| &m.path) else {
-            return Vec::new();
-        };
+            .collect()
+    }
+
+    fn folders_read(
+        &self,
+        library: &Library,
+        root: &Path,
+        active: &HashSet<String>,
+    ) -> Vec<PathBuf> {
         rimstack_core::rimworld::loadfolders::folders(root, &library.game_version, &|k| {
             active.contains(k)
         })
+    }
+
+    fn loaded_folders(&self, library: &Library, id: ModId) -> Vec<PathBuf> {
+        let Some(root) = library.get(id).map(|m| &m.path) else {
+            return Vec::new();
+        };
+        self.folders_read(library, root, &self.active_keys(library))
     }
 
     /// `earlier` loads first.
@@ -534,13 +588,15 @@ impl App {
 mod tests {
     #[test]
     fn both_sizes_share_a_unit_and_the_growth_is_said_when_large() {
-        let said = |png, dds| super::sizes_said(png, dds).map(|s| s.to_string());
+        let said = |png, dds| super::sizes_said(png, dds, true).map(|s| s.to_string());
         assert_eq!(said(0.0, 0.0), None);
         assert_eq!(said(0.001, 0.0004).unwrap(), "1.0 KB PNG  →  0.41 KB DDS");
         assert_eq!(
             said(10.0, 20.0).unwrap(),
             "10 MB PNG  →  20 MB DDS, 2.0× the size on disk, loads faster"
         );
+        let from_1_7 = super::sizes_said(10.0, 20.0, false).unwrap().to_string();
+        assert_eq!(from_1_7, "10 MB PNG  →  20 MB DDS");
     }
 
     use super::*;
@@ -555,8 +611,8 @@ mod tests {
     fn a_mod_with_textures_is_listed_until_you_ask_to_skip_it() {
         let (tmp, app) = installed();
         texture(&tmp.path().join("game/Mods/roads/Textures/road.png"));
-        let rows = app.texture_rows();
-        let on_show = crate::qml::values::as_shown(&shown(&rows, false));
+        let rows = app.texture_rows().rows;
+        let on_show = crate::words::as_shown(&shown(&rows, false, true));
         assert_eq!(on_show["rows"][0]["name"], "Ann.Roads");
         assert_eq!(on_show["rows"][0]["state"], "Not converted");
         assert_eq!(on_show["usual"], "Not converted");
@@ -564,12 +620,15 @@ mod tests {
         assert_eq!(on_show["have"], 0);
         assert_eq!(on_show["waiting"], 1);
         assert_eq!(on_show["remaining"].as_array().unwrap().len(), 1);
-        assert!(shown(&rows, true).rows.is_empty(), "Roads is not active");
+        assert!(
+            shown(&rows, true, true).rows.is_empty(),
+            "Roads is not active"
+        );
 
         app.skip_textures(rows[0].id, true).unwrap();
-        let rows = app.texture_rows();
+        let rows = app.texture_rows().rows;
         assert_eq!((rows[0].state, rows[0].waits), ("Skipped", false));
-        assert!(shown(&rows, false).remaining.is_empty());
+        assert!(shown(&rows, false, true).remaining.is_empty());
     }
 
     #[test]
@@ -581,7 +640,7 @@ mod tests {
             .save(textures.join("road.png"))
             .unwrap();
         std::fs::create_dir_all(app.texture_manifest_file()).unwrap();
-        let id = app.texture_rows()[0].id;
+        let id = app.texture_rows().rows[0].id;
 
         let stop = AtomicBool::new(false);
         let said = app.convert_textures(&[id], false, &stop, &|_| {});
@@ -592,6 +651,51 @@ mod tests {
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(left, ["road.png"]);
+    }
+
+    fn pack(at: &Path, entries: &[&str]) {
+        let mut listed = Vec::new();
+        for name in entries {
+            listed.extend(0x0201_4b50u32.to_le_bytes());
+            listed.extend([0u8; 24]);
+            listed.extend((name.len() as u16).to_le_bytes());
+            listed.extend([0u8; 16]);
+            listed.extend(name.as_bytes());
+        }
+        let mut bytes = listed.clone();
+        bytes.extend(0x0605_4b50u32.to_le_bytes());
+        bytes.extend([0u8; 8]);
+        bytes.extend((listed.len() as u32).to_le_bytes());
+        bytes.extend([0u8; 6]);
+        std::fs::write(at, bytes).unwrap();
+    }
+
+    #[test]
+    fn from_1_7_nothing_is_converted_and_a_dds_hiding_the_mod_s_pack_is_found() {
+        let (tmp, app) = installed();
+        let game = tmp.path().join("game");
+        std::fs::write(game.join("Version.txt"), "1.7.5005 rev1082").unwrap();
+        let roads = game.join("Mods/roads");
+        texture(&roads.join("Textures/road.png"));
+        texture(&roads.join("Textures/rock.dds"));
+        pack(&roads.join("Assets.zip"), &["Textures/rock.png.dds"]);
+        app.rescan();
+        let counted = app.texture_rows();
+        assert!(!counted.converts);
+        let rows = counted.rows;
+        assert_eq!((rows[0].not_converted, rows[0].waits), (1, false));
+        assert_eq!(shown(&rows, false, false).waiting, 0);
+        let stop = AtomicBool::new(false);
+        let said = app.convert_textures(&[rows[0].id], false, &stop, &|_| {});
+        assert_eq!(said, no_conversion());
+        assert!(!roads.join("Textures/road.dds").exists());
+
+        let refused = app.refused_dds();
+        assert_eq!(refused.len(), 1);
+        assert_eq!(refused[0].name, "rock.dds");
+        assert!(refused[0].why.to_string().contains("Assets.zip"));
+        assert_eq!(app.set_dds_aside(&refused), 0);
+        assert!(app.refused_dds().is_empty());
     }
 
     fn two_mods_sharing_a_rock(tmp: &tempfile::TempDir, app: &App) -> (ModId, ModId) {
@@ -638,6 +742,7 @@ mod tests {
         let again = app.compare_textures(a, b).unwrap();
         assert_eq!((again.kept_earlier, again.yours), (1, 1));
         assert_eq!(again.textures[0].used.to_string(), "Ann.A, chosen");
+        app.settle_writes();
         let history = app.history();
         assert_eq!(history[0].said, said);
         assert_eq!(Path::new(&history[0].bring_back), mods.join("b"));

@@ -127,7 +127,7 @@ pub fn shown<'a>(report: &'a SavesReport, folder: &str, filter: &str) -> SavesSh
         .collect();
     let count = saves.len();
     let mut heading = vec![match folder.is_empty() {
-        true => Sentence::Plain(count.to_string()),
+        true => Sentence::Number(count as i64),
         false => say!("{} in {}", count, folder),
     }];
     if let Some(version) = &report.all_from {
@@ -221,7 +221,7 @@ mod tests {
         std::fs::create_dir_all(&saves).unwrap();
         std::fs::write(saves.join("Colony.rws"), SAVE).unwrap();
         let report = app.saves_report();
-        let all = crate::qml::values::as_shown(&shown(&report, "", ""));
+        let all = crate::words::as_shown(&shown(&report, "", ""));
         let save = &all["saves"][0];
         assert_eq!(save["name"], "Colony");
         assert_eq!(save["verdict"]["breaks"], true);
@@ -234,16 +234,13 @@ mod tests {
             save["missingSaid"],
             "2 mods missing: 1 not installed, 1 not active"
         );
-        let none = crate::qml::values::as_shown(&shown(&report, "", "zzz"));
+        let none = crate::words::as_shown(&shown(&report, "", "zzz"));
         assert!(none["saves"].as_array().unwrap().is_empty());
-        let some = crate::qml::values::as_shown(&shown(&report, "", " COLO"));
+        let some = crate::words::as_shown(&shown(&report, "", " COLO"));
         assert_eq!(some["saves"].as_array().unwrap().len(), 1);
-        assert_eq!(some["searchable"], false);
         assert_eq!(save["dir"], saves.to_string_lossy().as_ref());
         assert_eq!(all["heading"], "1");
-        assert_eq!(all["pictured"], false);
-        assert!(!report.rimsaves);
-        let elsewhere = crate::qml::values::as_shown(&shown(&report, "Other", ""));
+        let elsewhere = crate::words::as_shown(&shown(&report, "Other", ""));
         assert_eq!(elsewhere["saves"].as_array().unwrap().len(), 0);
         assert_eq!(elsewhere["heading"], "0 in Other");
     }

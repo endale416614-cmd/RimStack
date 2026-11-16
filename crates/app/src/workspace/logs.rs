@@ -1,5 +1,6 @@
 use super::App;
 use rimstack_core::base::error::Error;
+use rimstack_core::base::locks::Held;
 use rimstack_core::base::sentence::Sentence;
 use rimstack_core::kept::launches::{self, LastStart, LogRead, Shown, SinceClean};
 use rimstack_core::mods::blame::{Blamed, Pointed};
@@ -17,6 +18,37 @@ const SHOWN_LINES: usize = 30_000;
 const LAUNCH_SLACK_SECS: u64 = 120;
 
 const LONGEST_KIND: usize = 90;
+
+#[derive(Serialize)]
+pub struct LastStartSaid {
+    #[serde(flatten)]
+    pub start: LastStart,
+    pub line: Sentence,
+}
+
+pub fn moment(seconds: u64) -> String {
+    use chrono::TimeZone;
+    let at = i64::try_from(seconds)
+        .ok()
+        .and_then(|s| chrono::Local.timestamp_opt(s, 0).single());
+    at.map_or(String::new(), |at| at.format("%Y-%m-%d %H:%M").to_string())
+}
+
+pub fn day(seconds: u64) -> String {
+    local(seconds, "%Y-%m-%d")
+}
+
+pub fn clock(seconds: u64) -> String {
+    local(seconds, "%H:%M")
+}
+
+fn local(seconds: u64, shape: &str) -> String {
+    use chrono::TimeZone;
+    let at = i64::try_from(seconds)
+        .ok()
+        .and_then(|s| chrono::Local.timestamp_opt(s, 0).single());
+    at.map_or(String::new(), |at| at.format(shape).to_string())
+}
 
 pub struct LogsReport {
     pub previous: bool,
@@ -256,6 +288,13 @@ impl App {
         self.settings().logs_kept().unwrap_or(10)
     }
 
+    /// `keep_logs` off the caller's thread, one copy at a time.
+    pub fn keep_logs_soon(self: &std::sync::Arc<Self>) {
+        let app = self.clone();
+        self.log_keeping
+            .ask("keep logs", (), move |()| app.keep_logs());
+    }
+
     pub fn keep_logs(&self) {
         let paths = self.paths();
         let Some(config) = paths.config.as_ref() else {
@@ -268,9 +307,23 @@ impl App {
         }
     }
 
+    pub fn last_start_said(&self) -> Option<LastStartSaid> {
+        self.last_start().map(|start| {
+            let errors = start.errors.map(|n| match n {
+                0 => say!("no errors"),
+                n => say_n!(n, "{} different error", "{} different errors"),
+            });
+            let started = say!("Last started {}", moment(start.time));
+            LastStartSaid {
+                start,
+                line: Sentence::listed(std::iter::once(started).chain(errors).collect()),
+            }
+        })
+    }
+
     pub fn last_start(&self) -> Option<LastStart> {
         let recorded = launches::read(&self.launches_file()).pop();
-        let read = *self.log_read.lock().unwrap_or_else(|e| e.into_inner());
+        let read = *self.log_read.held();
         launches::last_start(recorded.as_ref(), read, self.log_written() / 1000)
     }
 
@@ -336,7 +389,7 @@ impl App {
                 previous: false,
                 errors: groups.len(),
             });
-            let mut last = self.log_read.lock().unwrap_or_else(|e| e.into_inner());
+            let mut last = self.log_read.held();
             changed |= *last != read;
             *last = read;
         }
@@ -404,19 +457,16 @@ mod tests {
         launches::record(&app.launches_file(), &["ludeon.rimworld".to_string()], 1).unwrap();
         let (report, changed) = app.logs_report(false, None).unwrap();
         assert!(changed);
-        let errors = crate::qml::values::as_shown(&listed(&report.errors, "", &HashSet::new()));
+        let errors = crate::words::as_shown(&listed(&report.errors, "", &HashSet::new()));
         assert_eq!(errors[0]["count"], 2);
         assert_eq!(errors[0]["mod"], "Ann.Roads");
         assert_eq!(errors[0]["kind"], "Could not load texture for Ann.Roads");
-        assert_eq!(
-            crate::qml::values::as_shown(&report.culprits)[0]["times"],
-            2
-        );
-        let shown = crate::qml::values::as_shown(&launches(&report));
+        assert_eq!(crate::words::as_shown(&report.culprits)[0]["times"], 2);
+        let shown = crate::words::as_shown(&launches(&report));
         assert_eq!(shown[0]["errors"], 1);
         assert_eq!(shown[0]["added"], 1);
         assert_eq!(shown[0]["outcome"], "1 error");
-        let said = crate::qml::values::as_shown(&head(&report));
+        let said = crate::words::as_shown(&head(&report));
         assert_eq!(said["about"], "RimWorld 1.6.4871 rev600, 4 lines");
         assert_eq!(said["outside"], true);
         assert_eq!(said["cut"], "");
@@ -428,6 +478,9 @@ mod tests {
         assert_eq!(errors_of(&report, "Ann.Roads").len(), 1);
         assert!(help_text(&report, &report.errors[0]).contains("Logged 2 times, first at line 2"));
         assert_eq!(app.last_start().unwrap().errors, Some(1));
+        let line = app.last_start_said().unwrap().line.to_string();
+        assert!(line.starts_with("Last started 20"), "{line}");
+        assert!(line.ends_with(", 1 different error"), "{line}");
         let (_, again) = app.logs_report(false, None).unwrap();
         assert!(!again, "a second read changes nothing");
     }

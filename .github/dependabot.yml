@@ -7,8 +7,8 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
-      cxx-qt:
-        patterns: ["cxx", "cxx-*", "cxxbridge-*", "cxx-qt*", "qt-build-utils"]
+      gpui-fast:
+        patterns: ["gpui-fast*", "gpui-pre-scheduler"]
       icu:
         patterns: ["icu_*"]
       minor-and-patch:

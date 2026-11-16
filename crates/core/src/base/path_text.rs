@@ -5,6 +5,12 @@ use std::path::{Path, PathBuf};
 /// Absolute paths never start with it, so it cannot be mistaken for one.
 const BYTES: &str = "bytes:";
 
+/// The extension is compared in any case; `ext` has no dot.
+pub fn has_extension(path: &Path, ext: &str) -> bool {
+    path.extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case(ext))
+}
+
 pub fn to_text(path: &Path) -> String {
     match path.to_str() {
         Some(text) => text.to_string(),

@@ -55,6 +55,10 @@ fn collected(pipe: Option<impl Read + Send + 'static>) -> Gathered {
 /// Its stdin is empty. Past `limit` the program is killed, not what it started,
 /// and the error is `TimedOut`.
 pub fn run(command: &mut Command, limit: Duration) -> std::io::Result<Output> {
+    crate::base::waits::slow(&format!(
+        "the program {}",
+        command.get_program().to_string_lossy()
+    ));
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

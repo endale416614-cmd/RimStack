@@ -1,11 +1,14 @@
 use crate::base::links;
 use crate::base::sentence::Sentence;
 use crate::base::vdf;
+use crate::rimworld::engine::Engine;
 use crate::say;
 use std::path::{Path, PathBuf};
 
 pub const APP_ID: &str = "294100";
 const SETTINGS: &str = "Ludeon Studios/RimWorld by Ludeon Studios";
+/// Flatpak's and Snap's Steam give the games they start these as their home.
+const SANDBOXES: [&str; 2] = [".var/app/com.valvesoftware.Steam", "snap/steam/common"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Source {
@@ -28,8 +31,11 @@ pub struct Paths {
     /// The folder holding `Config/` and `Saves/`.
     pub config: Option<PathBuf>,
     pub workshop: Option<PathBuf>,
+    pub steam: bool,
     /// Short form, `1.6`, from `<game>/Version.txt`.
     pub game_version: Option<String>,
+    /// As `<game>/Version.txt` gives it: `1.6.4871 rev598`.
+    pub full_game_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -94,16 +100,32 @@ impl Paths {
 
 /// Steam's folder is often reached through several symlinks, so paths are canonicalised.
 fn existing(candidates: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = Vec::new();
-    for path in candidates
-        .into_iter()
-        .filter_map(|p| dunce::canonicalize(p).ok())
-    {
-        if path.is_dir() && !out.contains(&path) {
-            out.push(path);
+    let tagged = existing_with(candidates.into_iter().map(|path| (path, ())));
+    tagged.into_iter().map(|(path, ())| path).collect()
+}
+
+fn existing_with<T>(candidates: impl IntoIterator<Item = (PathBuf, T)>) -> Vec<(PathBuf, T)> {
+    let mut out: Vec<(PathBuf, T)> = Vec::new();
+    for (path, tag) in candidates {
+        let Ok(path) = dunce::canonicalize(path) else {
+            continue;
+        };
+        if path.is_dir() && !out.iter().any(|(kept, _)| *kept == path) {
+            out.push((path, tag));
         }
     }
     out
+}
+
+fn home_seen_from(os: Os, home: &Path, root: &Path) -> PathBuf {
+    let sandboxes = match os {
+        Os::Linux => existing(SANDBOXES.map(|sandbox| home.join(sandbox))),
+        _ => Vec::new(),
+    };
+    let holding = sandboxes
+        .into_iter()
+        .find(|sandbox| root.starts_with(sandbox));
+    holding.unwrap_or_else(|| home.to_path_buf())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,6 +209,10 @@ pub fn app_dirs(os: Os, home: &Path, env: Env) -> (PathBuf, PathBuf) {
     }
 }
 
+pub fn steam_folders(home: &Path) -> Vec<PathBuf> {
+    steam_roots(Os::running(), home, &from_environment)
+}
+
 fn steam_roots(os: Os, home: &Path, env: Env) -> Vec<PathBuf> {
     let places: Vec<PathBuf> = match os {
         Os::Linux => [
@@ -235,20 +261,19 @@ fn game_in(os: Os, place: &Path) -> Option<PathBuf> {
 }
 
 fn on_unity(game_version: Option<&str>) -> bool {
-    let parsed = game_version.and_then(|version| {
-        let (major, minor) = version.split_once('.')?;
-        Some((major.parse::<u32>().ok()?, minor.parse::<u32>().ok()?))
-    });
-    parsed.is_some_and(|version| version < (1, 7))
+    game_version.and_then(Engine::read) == Some(Engine::Unity)
 }
 
-fn native_settings(os: Os, home: &Path, game_version: Option<&str>) -> Vec<PathBuf> {
+fn native_settings(os: Os, home: &Path, seen: &Path, game_version: Option<&str>) -> Vec<PathBuf> {
     match os {
-        Os::Linux => vec![
-            home.join(".config/unity3d").join(SETTINGS),
-            home.join(".var/app/com.valvesoftware.Steam/.config/unity3d")
-                .join(SETTINGS),
-        ],
+        Os::Linux => {
+            let sandboxes = SANDBOXES.map(|sandbox| home.join(sandbox));
+            let homes = [seen.to_path_buf(), home.to_path_buf()].into_iter();
+            let homes = homes.chain(sandboxes);
+            homes
+                .map(|home| home.join(".config/unity3d").join(SETTINGS))
+                .collect()
+        }
         Os::Windows => vec![home.join("AppData/LocalLow").join(SETTINGS)],
         Os::Mac => {
             let support = home.join("Library/Application Support");
@@ -339,35 +364,40 @@ pub fn detect(home: &Path, overrides: &Overrides) -> Paths {
 
 pub fn detect_on(os: Os, home: &Path, env: Env, overrides: &Overrides) -> Paths {
     let roots = steam_roots(os, home, env);
-    let listed: Vec<vdf::Library> = roots
+    let seen_from: Vec<(&PathBuf, PathBuf)> = roots
         .iter()
-        .filter_map(|r| {
+        .map(|r| (r, home_seen_from(os, home, r)))
+        .collect();
+    let listed: Vec<(vdf::Library, &PathBuf)> = seen_from
+        .iter()
+        .filter_map(|(r, seen)| {
             // Steam keeps the list in both places; an install may lack one.
             let lists = ["steamapps/libraryfolders.vdf", "config/libraryfolders.vdf"];
-            lists
+            let text = lists
                 .iter()
-                .find_map(|list| std::fs::read_to_string(r.join(list)).ok())
+                .find_map(|list| std::fs::read_to_string(r.join(list)).ok())?;
+            Some(vdf::libraries(&text).into_iter().map(move |l| (l, seen)))
         })
-        .flat_map(|text| vdf::libraries(&text))
+        .flatten()
         .collect();
     // Libraries that list the game come first, so a stale copy elsewhere
     // does not win.
     let (with_app, without): (Vec<_>, Vec<_>) = listed
         .iter()
-        .partition(|l| l.apps.iter().any(|a| a == APP_ID));
-    let libraries = existing(
+        .partition(|(l, _)| l.apps.iter().any(|a| a == APP_ID));
+    let libraries = existing_with(
         with_app
             .into_iter()
             .chain(without)
-            .map(|l| l.path.clone())
-            .chain(roots.iter().cloned()),
+            .map(|(l, seen)| (l.path.clone(), *seen))
+            .chain(seen_from.iter().map(|(r, seen)| ((*r).clone(), seen))),
     );
 
     let found_game = libraries
         .iter()
-        .map(|l| (l, content_root(os, &l.join("steamapps/common/RimWorld"))))
+        .map(|l| (l, content_root(os, &l.0.join("steamapps/common/RimWorld"))))
         .find(|(_, game)| game.is_dir());
-    let workshop_in = |l: &PathBuf| {
+    let workshop_in = |(l, _): &(PathBuf, &PathBuf)| {
         Some(l.join("steamapps/workshop/content").join(APP_ID)).filter(|p| p.is_dir())
     };
 
@@ -388,15 +418,27 @@ pub fn detect_on(os: Os, home: &Path, env: Env, overrides: &Overrides) -> Paths 
             .and_then(|(l, _)| workshop_in(l))
             .or_else(|| libraries.iter().find_map(workshop_in))
     });
-    let game_version = game
+    let full_game_version = game
         .as_ref()
         .and_then(|g| std::fs::read_to_string(g.join("Version.txt")).ok())
-        .and_then(|v| crate::rimworld::modsconfig::short_version(&v));
+        .and_then(|v| v.lines().next().map(|line| line.trim().to_string()))
+        .filter(|v| !v.is_empty());
+    let game_version = full_game_version
+        .as_deref()
+        .and_then(crate::rimworld::modsconfig::short_version);
     let config = given(&overrides.config).map(settings_holder).or_else(|| {
-        let native = native_settings(os, home, game_version.as_deref());
+        let canonical = game.as_deref().and_then(|g| dunce::canonicalize(g).ok());
+        let seen = canonical.map_or_else(
+            || home.to_path_buf(),
+            |game| match libraries.iter().find(|(l, _)| game.starts_with(l)) {
+                Some((_, seen)) => (*seen).clone(),
+                None => home_seen_from(os, home, &game),
+            },
+        );
+        let native = native_settings(os, home, &seen, game_version.as_deref());
         // Under Proton the settings live inside the game's Windows prefix.
         let under_proton = libraries.iter().filter(|_| os == Os::Linux);
-        let proton = under_proton.map(|l| {
+        let proton = under_proton.map(|(l, _)| {
             l.join("steamapps/compatdata")
                 .join(APP_ID)
                 .join("pfx/drive_c/users/steamuser/AppData/LocalLow")
@@ -422,315 +464,11 @@ pub fn detect_on(os: Os, home: &Path, env: Env, overrides: &Overrides) -> Paths 
         game,
         config,
         workshop,
+        steam: !roots.is_empty(),
         game_version,
+        full_game_version,
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    const NATIVE_CONFIG: &str = ".config/unity3d/Ludeon Studios/RimWorld by Ludeon Studios";
-
-    fn library_with_game(library: &Path) {
-        let game = library.join("steamapps/common/RimWorld");
-        fs::create_dir_all(game.join("Data")).unwrap();
-        fs::create_dir_all(game.join("Mods")).unwrap();
-        fs::write(game.join("Version.txt"), "1.6.4871 rev598\n").unwrap();
-        fs::write(game.join("RimWorldLinux"), "").unwrap();
-        fs::create_dir_all(library.join("steamapps/workshop/content/294100")).unwrap();
-    }
-
-    fn steam_root(home: &Path, libraries: &[(&Path, bool)]) -> PathBuf {
-        let root = home.join(".local/share/Steam");
-        fs::create_dir_all(root.join("steamapps")).unwrap();
-        let mut vdf = String::from("\"libraryfolders\"\n{\n");
-        for (i, (path, has_game)) in libraries.iter().enumerate() {
-            let apps = if *has_game { "\"294100\" \"1\"" } else { "" };
-            vdf += &format!(
-                "\"{i}\" {{ \"path\" \"{}\" \"apps\" {{ {apps} }} }}\n",
-                path.display()
-            );
-        }
-        fs::write(root.join("steamapps/libraryfolders.vdf"), vdf + "}\n").unwrap();
-        root
-    }
-
-    #[test]
-    fn native_install_is_found() {
-        let home = tempfile::tempdir().unwrap();
-        let root = steam_root(home.path(), &[]);
-        library_with_game(&root);
-        fs::create_dir_all(home.path().join(NATIVE_CONFIG)).unwrap();
-
-        let paths = detect(home.path(), &Overrides::default());
-        let root = root.canonicalize().unwrap();
-        assert_eq!(paths.game, Some(root.join("steamapps/common/RimWorld")));
-        assert_eq!(
-            paths.workshop,
-            Some(root.join("steamapps/workshop/content/294100"))
-        );
-        assert_eq!(paths.config, Some(home.path().join(NATIVE_CONFIG)));
-        assert_eq!(paths.game_version.as_deref(), Some("1.6"));
-        let sources: Vec<Source> = paths.roots().iter().map(|r| r.source).collect();
-        assert_eq!(sources, [Source::Official, Source::Local, Source::Workshop]);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn game_in_a_second_library_is_found_and_symlinked_roots_count_once() {
-        let home = tempfile::tempdir().unwrap();
-        let second = home.path().join("games");
-        library_with_game(&second);
-        let root = steam_root(home.path(), &[(&second, true)]);
-        fs::create_dir_all(home.path().join(".steam")).unwrap();
-        std::os::unix::fs::symlink(&root, home.path().join(".steam/steam")).unwrap();
-
-        assert_eq!(steam_roots(Os::Linux, home.path(), &|_| None).len(), 1);
-        let paths = detect(home.path(), &Overrides::default());
-        let second = second.canonicalize().unwrap();
-        assert_eq!(paths.game, Some(second.join("steamapps/common/RimWorld")));
-    }
-
-    #[test]
-    fn a_workshop_folder_set_to_the_games_mods_is_read_once_as_local() {
-        let home = tempfile::tempdir().unwrap();
-        library_with_game(home.path());
-        let game = home.path().join("steamapps/common/RimWorld");
-        let paths = Paths {
-            workshop: Some(game.join("Mods/.")),
-            game: Some(game),
-            ..Paths::default()
-        };
-        let sources: Vec<Source> = paths.roots().iter().map(|r| r.source).collect();
-        assert_eq!(sources, [Source::Official, Source::Local]);
-    }
-
-    #[test]
-    fn library_listing_the_app_beats_a_stale_copy() {
-        let home = tempfile::tempdir().unwrap();
-        let (stale, real) = (home.path().join("old"), home.path().join("new"));
-        library_with_game(&stale);
-        library_with_game(&real);
-        steam_root(home.path(), &[(&stale, false), (&real, true)]);
-
-        let paths = detect(home.path(), &Overrides::default());
-        let real = real.canonicalize().unwrap();
-        assert_eq!(paths.game, Some(real.join("steamapps/common/RimWorld")));
-    }
-
-    #[test]
-    fn proton_settings_are_found() {
-        let home = tempfile::tempdir().unwrap();
-        let root = steam_root(home.path(), &[]);
-        library_with_game(&root);
-        let game = root.join("steamapps/common/RimWorld");
-        fs::remove_file(game.join("RimWorldLinux")).unwrap();
-        fs::write(game.join("RimWorldWin64.exe"), "").unwrap();
-        let prefix = root
-            .join("steamapps/compatdata/294100/pfx/drive_c/users/steamuser/AppData/LocalLow")
-            .join(SETTINGS);
-        fs::create_dir_all(&prefix).unwrap();
-        fs::create_dir_all(home.path().join(NATIVE_CONFIG)).unwrap();
-
-        let paths = detect(home.path(), &Overrides::default());
-        assert_eq!(paths.config, Some(prefix.canonicalize().unwrap()));
-    }
-
-    #[test]
-    fn the_folders_of_windows_and_macos_are_found() {
-        let tmp = tempfile::tempdir().unwrap();
-        let home = tmp.path().join("home");
-        let programs = tmp.path().join("Program Files (x86)");
-        let settings = home.join("AppData/LocalLow").join(SETTINGS);
-        fs::create_dir_all(programs.join("Steam/steamapps/common/RimWorld")).unwrap();
-        fs::create_dir_all(programs.join("Steam/steamapps/workshop/content/294100")).unwrap();
-        fs::create_dir_all(&settings).unwrap();
-        let env = |name: &str| (name == "ProgramFiles(x86)").then(|| programs.clone());
-        let found = detect_on(Os::Windows, &home, &env, &Overrides::default());
-        assert!(
-            found
-                .game
-                .unwrap()
-                .ends_with("Steam/steamapps/common/RimWorld")
-        );
-        assert!(found.workshop.unwrap().ends_with("workshop/content/294100"));
-        assert_eq!(found.config.unwrap(), settings);
-
-        let support = home.join("Library/Application Support");
-        let installed = support.join("Steam/steamapps/common/RimWorld");
-        fs::create_dir_all(installed.join("RimWorldMac.app")).unwrap();
-        fs::create_dir_all(installed.join("Data")).unwrap();
-        fs::create_dir_all(support.join("Rimworld")).unwrap();
-        let found = detect_on(Os::Mac, &home, &|_| None, &Overrides::default());
-        assert!(found.game.unwrap().ends_with("common/RimWorld"));
-        assert_eq!(found.config.unwrap(), support.join("Rimworld"));
-        fs::create_dir_all(installed.join("RimWorldMac.app/Data")).unwrap();
-        let found = detect_on(Os::Mac, &home, &|_| None, &Overrides::default());
-        assert!(found.game.unwrap().ends_with("RimWorld/RimWorldMac.app"));
-    }
-
-    #[test]
-    fn macos_settings_follow_the_game_s_version_when_both_folders_are_left() {
-        let home = tempfile::tempdir().unwrap();
-        let support = home.path().join("Library/Application Support");
-        let installed = support.join("Steam/steamapps/common/RimWorld");
-        fs::create_dir_all(installed.join("Data")).unwrap();
-        let (unity, waylith) = (
-            support.join("Ludeon Studios/RimWorld"),
-            support.join("Rimworld"),
-        );
-        fs::create_dir_all(&unity).unwrap();
-        fs::create_dir_all(&waylith).unwrap();
-        let config_for = |version: &str| {
-            fs::write(installed.join("Version.txt"), version).unwrap();
-            detect_on(Os::Mac, home.path(), &|_| None, &Overrides::default()).config
-        };
-        assert_eq!(config_for("1.7.4976 rev1043"), Some(waylith.clone()));
-        assert_eq!(config_for("1.6.4871 rev598"), Some(unity));
-        fs::remove_file(installed.join("Version.txt")).unwrap();
-        let found = detect_on(Os::Mac, home.path(), &|_| None, &Overrides::default());
-        assert_eq!(found.config, Some(waylith));
-    }
-
-    #[test]
-    fn steam_s_folder_is_read_from_what_the_registry_prints() {
-        let printed = "\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Valve\\Steam\r\n    InstallPath    REG_SZ    D:\\Games\\Steam\r\n";
-        assert_eq!(
-            install_path(printed),
-            Some(PathBuf::from("D:\\Games\\Steam"))
-        );
-        assert_eq!(
-            install_path("ERROR: The system was unable to find the key."),
-            None
-        );
-        let tmp = tempfile::tempdir().unwrap();
-        let steam = tmp.path().join("Steam");
-        fs::create_dir_all(steam.join("steamapps/common/RimWorld")).unwrap();
-        let env = |name: &str| (name == STEAM_INSTALL).then(|| steam.clone());
-        let found = detect_on(Os::Windows, tmp.path(), &env, &Overrides::default());
-        assert!(
-            found
-                .game
-                .unwrap()
-                .ends_with("Steam/steamapps/common/RimWorld")
-        );
-    }
-
-    #[test]
-    fn a_program_s_own_folders_follow_the_system() {
-        let home = Path::new("/h");
-        let none = |_: &str| None;
-        assert_eq!(
-            app_dirs(Os::Linux, home, &none),
-            (home.join(".config"), home.join(".local/share"))
-        );
-        let set = |name: &str| (name == "XDG_DATA_HOME").then(|| PathBuf::from("/data"));
-        assert_eq!(app_dirs(Os::Linux, home, &set).1, PathBuf::from("/data"));
-        assert_eq!(
-            app_dirs(Os::Windows, home, &none),
-            (home.join("AppData/Roaming"), home.join("AppData/Local"))
-        );
-        let support = home.join("Library/Application Support");
-        assert_eq!(app_dirs(Os::Mac, home, &none), (support.clone(), support));
-        let windows = |name: &str| (name == "USERPROFILE").then(|| PathBuf::from("/u"));
-        assert_eq!(super::home(&windows), PathBuf::from("/u"));
-    }
-
-    #[test]
-    fn a_copy_from_another_shop_is_found_by_its_core_and_has_no_workshop() {
-        let home = tempfile::tempdir().unwrap();
-        let game = home.path().join("GOG Games/RimWorld 1.6");
-        fs::create_dir_all(game.join("Data/Core")).unwrap();
-        fs::create_dir_all(home.path().join("GOG Games/Another Game/Data")).unwrap();
-        fs::write(game.join("Version.txt"), "1.6.4871 rev600").unwrap();
-        let paths = detect_on(Os::Linux, home.path(), &|_| None, &Overrides::default());
-        assert_eq!(paths.game, Some(game.canonicalize().unwrap()));
-        assert_eq!(
-            (paths.workshop, paths.game_version.as_deref()),
-            (None, Some("1.6"))
-        );
-
-        let mac = tempfile::tempdir().unwrap();
-        let bundle = mac.path().join("Applications/RimWorld.app");
-        fs::create_dir_all(bundle.join("Data/Core")).unwrap();
-        let paths = detect_on(Os::Mac, mac.path(), &|_| None, &Overrides::default());
-        assert_eq!(paths.game, Some(bundle.canonicalize().unwrap()));
-    }
-
-    #[test]
-    fn steam_s_list_of_libraries_is_read_from_either_place_it_keeps_it() {
-        let home = tempfile::tempdir().unwrap();
-        let second = home.path().join("games");
-        library_with_game(&second);
-        let root = steam_root(home.path(), &[(&second, true)]);
-        fs::create_dir_all(root.join("config")).unwrap();
-        let (usual, other) = ("steamapps/libraryfolders.vdf", "config/libraryfolders.vdf");
-        fs::rename(root.join(usual), root.join(other)).unwrap();
-        let paths = detect(home.path(), &Overrides::default());
-        let second = second.canonicalize().unwrap();
-        assert_eq!(paths.game, Some(second.join("steamapps/common/RimWorld")));
-    }
-
-    #[test]
-    fn nothing_installed_finds_nothing() {
-        let home = tempfile::tempdir().unwrap();
-        let paths = detect(home.path(), &Overrides::default());
-        assert_eq!(paths, Paths::default());
-        assert!(paths.roots().is_empty());
-        assert_eq!(paths.mods_config(), None);
-    }
-
-    #[test]
-    fn a_game_set_by_hand_wins_and_has_no_workshop() {
-        let home = tempfile::tempdir().unwrap();
-        let root = steam_root(home.path(), &[]);
-        library_with_game(&root);
-        let copy = home.path().join("drm-free");
-        fs::create_dir_all(copy.join("Mods")).unwrap();
-
-        let overrides = Overrides {
-            game: Some(copy.clone()),
-            ..Overrides::default()
-        };
-        let paths = detect(home.path(), &overrides);
-        assert_eq!(paths.game, Some(copy));
-        assert_eq!(paths.workshop, None);
-        assert_eq!(paths.roots().len(), 1);
-    }
-
-    #[test]
-    fn a_folder_typed_by_hand_is_judged_by_what_it_holds() {
-        let dir = tempfile::tempdir().unwrap();
-        let game = dir.path().join("game");
-        let judged = |kind, place: &Path| judge(Os::Linux, kind, place).map_err(|e| e.to_string());
-        assert!(judged(Folder::Game, &game).is_err());
-        fs::create_dir_all(&game).unwrap();
-        assert!(judged(Folder::Game, &game).unwrap_err().contains("Data"));
-        fs::create_dir_all(game.join("Data")).unwrap();
-        fs::write(game.join("Version.txt"), "1.6.4871 rev598\n").unwrap();
-        assert_eq!(
-            judged(Folder::Game, &game).unwrap().to_string(),
-            "RimWorld 1.6 found"
-        );
-        assert!(judged(Folder::Config, &game).is_err());
-        fs::create_dir_all(game.join("Saves")).unwrap();
-        assert!(judged(Folder::Config, &game).is_ok());
-        assert!(judged(Folder::Workshop, &game).is_ok());
-    }
-
-    #[test]
-    fn a_settings_folder_typed_as_its_saves_is_the_folder_above() {
-        let home = tempfile::tempdir().unwrap();
-        let settings = home.path().join("settings");
-        fs::create_dir_all(settings.join("Saves")).unwrap();
-        let typed = settings.join("Saves");
-        assert!(judge(Os::Linux, Folder::Config, &typed).is_ok());
-        let overrides = Overrides {
-            config: Some(typed),
-            ..Overrides::default()
-        };
-        assert_eq!(detect(home.path(), &overrides).config, Some(settings));
-    }
-}
+mod tests;

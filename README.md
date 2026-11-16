@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>The RimWorld mod manager that is up in 0.2 seconds<br>and sorts by reading what is inside your mods.</b><br>
-  Free, open source, native.
+  Free, open source, native. For RimWorld 1.6 and 1.7.
 </p>
 
 <p align="center">
@@ -16,13 +16,17 @@
 </p>
 
 <p align="center">
+  <a href="https://discord.gg/Za5CSzB52r"><img src="https://img.shields.io/badge/Join_the_Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the RimStack Discord"></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/sponsors/TheForgotten69"><img src="https://img.shields.io/badge/GitHub_Sponsors-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub"></a>
   <a href="https://ko-fi.com/theforgotten69"><img src="https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
   <a href="https://www.patreon.com/theforgotten69"><img src="https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white" alt="Support on Patreon"></a>
 </p>
 
 <p align="center">
-  <img src="site/img/mods.png" alt="RimStack's Mods screen: the load order in categories, with Sort ready to move six mods" width="720">
+  <img src="site/img/mods.webp" alt="RimStack's Mods screen: inactive mods on the left, the load order in categories, and the selected mod's details" width="720">
 </p>
 
 ## Fast, for real
@@ -46,7 +50,7 @@ You never press Refresh. While the window is open, RimStack looks at your mods, 
 - **Mods changed by hand.** A folder copied into Mods, an `About.xml` edited, a Git checkout pulled.
 - **The game's own list.** If the game or another tool rewrites `ModsConfig.xml`, you're offered that list, never forced onto it.
 - **Saves and logs.** A new save shows up in Saves; when the game closes, its log is read and its errors grouped.
-- **Every setting.** Theme, language, text size, font, your own colours and translations apply the moment you change them.
+- **Every setting.** Theme, language, text size, font, and your own `theme.json` and translation files apply the moment they change.
 
 ## Sorts by what is inside
 
@@ -60,20 +64,22 @@ It also sorts your mods into categories on its own (loaders, game and DLC, libra
 
 Moving, activating, sorting and loading a list only change the list inside RimStack, and every step can be undone. Save writes one file, the game's `ModsConfig.xml`, after copying the old one beside it.
 
-Everything else that writes happens only when you ask: converting textures, hiding a texture that loses to another mod's, downloading, unsubscribing, or setting mod settings aside. Every file RimStack makes or hides is recorded so it can be undone. Play also copies your newest save into RimStack's own folder first, just in case.
+Everything else that writes happens only when you ask: converting textures (up to 1.6), deleting spare DDS files (from 1.7), hiding a texture that loses to another mod's, downloading, unsubscribing, or setting mod settings aside. Every file RimStack makes or hides is recorded so it can be undone. Play also copies your newest save into RimStack's own folder first, just in case.
 
 ## What else is in it
 
 - **Explains every problem.** Missing requirements, mods that clash, the wrong game version, duplicates, a mod placed above the game, each with its fix beside it.
 - **Texture conflicts.** Two mods ship the same texture? See them side by side, as a slider or as their difference, and keep the one you want.
-- **PNG to DDS built in.** The game loads faster, with no extra tool, and only the files RimStack made are ever removed.
+- **Textures, on either engine.** Up to 1.6, PNG to DDS built in: the game loads faster, with no extra tool, and only the files RimStack made are ever removed. From 1.7, where the game makes its own, it finds the DDS files that only take room or hide a mod's packed textures.
 - **Find the broken mod.** It switches half your mods off, you play and say whether it still breaks, until one mod is left. Your list comes back after.
 - **Reads the game's errors.** Thousands of log lines become a few errors, each with the mod its stack trace points at and a report to copy.
 - **Saves.** Which mods each save was played with, what is missing, and its list as your load order in one click.
-- **Downloads and updates.** Paste Workshop, collection or Git links to subscribe, fetch with SteamCMD, or clone. See which mods are behind, and what changed since the game last started.
-- **Filters, saved lists, tags and notes, Undo and Redo,** and every action from one search box (Ctrl + K).
+- **Downloads and updates.** Paste Workshop, collection or Git links to subscribe, fetch with SteamCMD, or clone. Workshop, SteamCMD and Git mods update by themselves as often as you choose, and you see what changed since the game last started.
+- **Browse the Workshop.** Search and filter the Steam Workshop inside RimStack, with or without a Steam key, then subscribe or download.
+- **Search mods' files.** A word or a pattern in every mod's XML, grouped by mod and file (Ctrl + Shift + F).
+- **Filters, saved lists, tags and notes, Undo and Redo,** load orders shared on Rentry.co, and every action from one search box (Ctrl + K).
 - **Coming from RimSort?** The first run imports your rules, tags and notes.
-- **Eight languages:** English, Deutsch, Español, Français, Italiano, Polski, Português and Русский.
+- **Nine languages:** English, Deutsch, Español, Français, Italiano, Polski, Português, Русский and 한국어.
 
 Every panel is explained, with pictures, in the [guide](https://theforgotten69.github.io/RimStack/#guide).
 
@@ -85,7 +91,7 @@ Grab the file for your system from the [Releases page](https://github.com/TheFor
 |---|---|
 | Windows | Installer (`-setup.exe`) or zip |
 | macOS | dmg, Apple silicon and Intel |
-| Linux | AppImage |
+| Linux | AppImage or Flatpak |
 | Arch (AUR) | Coming soon |
 
 RimStack finds RimWorld through Steam. If it can't, it asks you for the folder.
@@ -101,7 +107,7 @@ Signing costs money, so for now Windows and macOS will warn you. The files are f
 2. Open **System Settings, Privacy & Security**, scroll down, and click **Open Anyway** next to RimStack.
 3. If macOS says the app is damaged, run this in Terminal: `xattr -dr com.apple.quarantine /Applications/RimStack.app`
 
-**Linux.** Make the AppImage executable and run it: `chmod +x RimStack-*.AppImage`.
+**Linux.** Make the AppImage executable and run it: `chmod +x RimStack-*.AppImage`. Or install the Flatpak: `flatpak install RimStack-*.flatpak`.
 
 ## Licence
 

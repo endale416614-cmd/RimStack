@@ -45,7 +45,6 @@ pub struct Notes {
     by_id: BTreeMap<String, Note>,
 }
 
-/// Commas separate; a tag repeated in any case is kept once, as first spelled.
 pub fn tags_in(text: &str) -> Vec<String> {
     let mut tags: Vec<String> = Vec::new();
     for tag in text.split(',').map(str::trim).filter(|t| !t.is_empty()) {
